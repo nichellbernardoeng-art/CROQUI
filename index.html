@@ -1,0 +1,2312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Croqui de Campo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1557d6">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* VOICE: ferramenta de campo, objetiva, de prancheta — nada decorativo.
+   IDEA: a caderneta de levantamento: papel quadriculado, lápis e trena.
+   PICTURE: o próprio desenho ocupa a tela inteira; o resto são controles.
+   COLOUR and TYPE: papel claro, grafite, vermelho para pilares, laranja para estimado; fonte do sistema.
+   LAYOUT: barra superior fina, prancheta ao centro, status + ferramentas no polegar. */
+:root{color-scheme:light dark;
+--bg:light-dark(#f6f5f0,#15181c);--paper:light-dark(#fbfaf6,#1b1f24);--ink:light-dark(#1d232b,#e8eaed);--muted:light-dark(#6b7280,#9aa3ad);
+--line:light-dark(#dcd9cf,#2c323a);--grid:light-dark(#ebe8de,#232830);--grid2:light-dark(#d9d5c8,#2e353e);
+--wall:light-dark(#c9cfd6,#3d4650);--accent:light-dark(#1557d6,#6aa1ff);--red:#d62828;--orange:light-dark(#c96a00,#f0a040);
+--cyan:light-dark(#0a7ea4,#4cc3e8);--mag:light-dark(#a1239b,#e07ad9);--ok:light-dark(#1f7a3a,#5fd38a);--onacc:light-dark(#ffffff,#0b1220);--panel:light-dark(#ffffff,#20252b)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+[hidden]{display:none!important}
+/* lista */
+#home{height:100%;overflow:auto;padding:20px 16px 96px}
+#home h1{font-size:32px;line-height:1.05;margin:8px 0 4px;letter-spacing:-.01em}
+#home .sub{color:var(--muted);margin:0 0 20px;max-width:60ch}
+.cards{display:grid;gap:10px;max-width:720px}
+.card{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 8px 12px 14px}
+.card .main{flex:1;text-align:left;padding:4px 0}
+.card .nm{font-weight:600;display:block}.card .meta{color:var(--muted);font-size:14px}
+.thumb{width:64px;height:52px;flex:none;border-radius:6px;background:var(--paper);border:1px solid var(--line)}
+.iconbtn{width:44px;height:44px;display:grid;place-items:center;border-radius:10px;flex:none}
+.iconbtn:active{background:var(--line)}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:24px;color:var(--muted);max-width:720px}
+.fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));background:var(--accent);color:var(--onacc);border-radius:14px;padding:0 20px;height:52px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.linkbtn{color:var(--accent);font-weight:600;padding:10px 0;min-height:44px}
+/* editor */
+#editor{position:fixed;inset:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:2px;padding:2px 4px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
+.top .title{flex:1;text-align:left;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;min-height:44px}
+.top .iconbtn:disabled{opacity:.35}
+.stage{position:relative;flex:1;background:var(--paper);overflow:hidden}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.hint{position:absolute;left:8px;right:8px;top:8px;font-size:13px;color:var(--muted);background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:8px;padding:6px 10px;pointer-events:none;max-width:520px}
+.status{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;background:var(--panel);border-top:1px solid var(--line)}
+.status #stat{flex:1;font-size:14px;color:var(--muted)}
+.status #stat b{color:var(--ink);font-weight:600}.status #stat .warn{color:var(--orange);font-weight:600}
+.pill{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line);font-weight:600;font-size:15px}
+.pill:disabled{opacity:.4}
+.pill.pri{background:var(--accent);border-color:var(--accent);color:var(--onacc)}
+.tools{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tools button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 8px;font-size:11.5px;color:var(--muted);min-height:56px}
+.tools button[aria-pressed=true]{color:var(--accent);font-weight:600;box-shadow:inset 0 3px 0 var(--accent)}
+/* folha inferior */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.25)}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;background:var(--panel);border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.2);padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+#sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+#sheet h2{font-size:20px;margin:0 0 12px;line-height:1.2}
+#sheet p{margin:0 0 12px;color:var(--muted);font-size:15px}
+.f{display:grid;gap:4px;margin-bottom:12px}
+.f label,.lab{font-size:14px;color:var(--muted)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+input,select,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:46px;width:100%}
+input.big{font-size:24px;font-weight:600;letter-spacing:.01em}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;min-height:42px;font-size:14px;padding:0 4px;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--onacc);font-weight:600}
+.acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.acts .pill{flex:1 1 auto;height:46px}
+.pill.danger{color:var(--red)}
+.list{border:1px solid var(--line);border-radius:10px;margin:0 0 12px}
+.list>div{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-top:1px solid var(--line);font-size:15px}
+.list>div:first-child{border-top:0}
+.list>div span{flex:1}
+.menu button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 4px;min-height:52px;border-top:1px solid var(--line)}
+.menu button:first-of-type{border-top:0}
+.menu small{display:block;color:var(--muted);font-size:13px}
+.rep{font-size:15px;margin:0 0 12px}.rep li{margin:4px 0}
+.okc{color:var(--ok);font-weight:600}.badc{color:var(--orange);font-weight:600}
+ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
+#toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:15px;max-width:88vw;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+@media (min-width:900px){.tools{grid-template-columns:repeat(6,112px);justify-content:center}}
+#fbar{position:absolute;display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:2}
+#fbar button{height:40px;padding:0 10px;border-radius:8px;font-size:14px;font-weight:600;white-space:nowrap}
+#fbar button:active{background:var(--line)}
+#fbar .danger{color:var(--red)}
+.okt{color:var(--ok);font-weight:600}
+.models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:4px 0 14px}
+.models button{display:flex;align-items:center;gap:10px;text-align:left;min-height:52px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;line-height:1.2}
+.models button[aria-pressed=true]{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel));font-weight:600}
+.models svg.i{flex:none;width:28px;height:28px}
+.dbox{border:1.5px solid var(--accent);border-radius:12px;padding:10px 12px 2px;margin:0 0 12px;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.dbox p{color:var(--ink)}
+</style>
+</head>
+<body>
+<section id="home">
+  <h1>Levantamentos</h1>
+  <p class="sub">Croqui com o dedo ou por foto, medidas da trena, cortes e saída em DXF para o AutoCAD.</p>
+  <div class="cards" id="cards"></div>
+  <p><button class="linkbtn" id="bImport">Importar backup (.json)</button></p>
+  <p><button class="linkbtn" id="bInstall" hidden>Instalar o app neste celular</button></p>
+  <input type="file" id="fImport" accept=".json,application/json" hidden>
+  <button class="fab" id="bNew"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo levantamento</button>
+</section>
+
+<section id="editor" hidden>
+  <header class="top">
+    <button class="iconbtn" id="bBack" aria-label="Voltar à lista"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="title" id="bTitle">Levantamento</button>
+    <button class="iconbtn" id="bUndo" aria-label="Desfazer"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+    <button class="iconbtn" id="bRedo" aria-label="Refazer"><svg class="i" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+    <button class="iconbtn" id="bMore" aria-label="Mais opções"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+  </header>
+  <div class="stage" id="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div>
+    <div id="fbar" hidden><button data-f="rot">↻ 90°</button><button data-f="rot15">↻ 15°</button><button data-f="ed">Medidas</button><button data-f="del" class="danger">Excluir</button></div></div>
+  <div class="status"><span id="stat"></span><button class="pill" id="bMeasure">Medir</button><button class="pill pri" id="bAdjust">Conferir</button></div>
+  <nav class="tools" id="tools">
+    <button data-mode="parede" aria-pressed="true"><svg class="i" viewBox="0 0 24 24"><path d="M5 19L19 5"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>Parede</button>
+    <button data-mode="editar"><svg class="i" viewBox="0 0 24 24"><path d="M6 3l12 9-5.5 1.2L15 20l-2.5 1-2.6-6.6L6 18z"/></svg>Editar</button>
+    <button data-mode="pilar"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="5" width="8" height="14" fill="currentColor" stroke="none"/></svg>Pilar</button>
+    <button data-mode="texto"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Texto</button>
+    <button data-mode="diag"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"/><path d="M4 19L20 5" stroke-dasharray="2 2.5"/></svg>Diagonal</button>
+    <button data-mode="corte"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h18" stroke-dasharray="5 2 1.5 2"/><path d="M4 12V6M20 12V6M2 8l2-2 2 2M18 8l2-2 2 2"/></svg>Corte</button>
+  </nav>
+</section>
+
+<div id="scrim" hidden></div>
+<div id="sheet" hidden role="dialog" aria-modal="true"></div>
+<div id="toast" role="status"></div>
+
+<script>
+/* ===== NÚCLEO: geometria, ajuste às medidas, DXF, zip (sem DOM) ===== */
+const Core = (() => {
+  const EPS = 1e-9;
+  let seq = 0;
+  const uid = (p) => p + Date.now().toString(36).slice(-5) + (seq++).toString(36) + Math.random().toString(36).slice(2, 5);
+  const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace('.', ',');
+  const parseNum = (s) => {
+    if (s === null || s === undefined) return null;
+    const t = String(s).trim().replace(/\s/g, '').replace(',', '.');
+    if (t === '') return null;
+    const v = Number(t);
+    return Number.isFinite(v) ? v : null;
+  };
+  const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+  const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+  const mul = (a, k) => ({ x: a.x * k, y: a.y * k });
+  const dot = (a, b) => a.x * b.x + a.y * b.y;
+  const cross = (a, b) => a.x * b.y - a.y * b.x;
+  const len = (a) => Math.hypot(a.x, a.y);
+  const unit = (a) => { const l = len(a); return l < EPS ? { x: 1, y: 0 } : { x: a.x / l, y: a.y / l }; };
+  const perp = (u) => ({ x: -u.y, y: u.x });
+
+  function newProject(name) {
+    return {
+      v: 4, id: uid('L'), name: name || 'Levantamento',
+      info: { obra: '', local: '', coord: '', data: new Date().toISOString().slice(0, 10), resp: '', obs: '' },
+      settings: { t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10, roof: { aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' } },
+      nodes: [], walls: [], pillars: [], labels: [], cuts: [],
+      createdAt: Date.now(), updatedAt: Date.now()
+    };
+  }
+
+  /* compatibiliza levantamentos salvos em versões anteriores */
+  function normalize(p) {
+    p.nodes = p.nodes || []; p.walls = p.walls || []; p.pillars = p.pillars || []; p.labels = p.labels || []; p.cuts = p.cuts || [];
+    p.info = p.info || {};
+    p.settings = Object.assign({ t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10 }, p.settings || {});
+    p.settings.roof = Object.assign({ aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' }, p.settings.roof || {});
+    if (!p.v || p.v < 2) { for (const pl of p.pillars) pl.rot = pl.rot === 1 ? 90 : (pl.rot || 0); p.v = 2; }
+    if (p.v < 3) { for (const w of p.walls) if (w.kind !== 'verif') w.ori = 'L'; p.v = 3; }
+    if (p.v < 4) { for (const w of p.walls) if (w.kind === 'verif') w.use = false; p.v = 4; }
+    for (const w of p.walls) w.ops = w.ops || [];
+    return p;
+  }
+  const nodeMap = (p) => { const m = new Map(); for (const n of p.nodes) m.set(n.id, n); return m; };
+  const paredes = (p) => p.walls.filter((w) => w.kind !== 'verif');
+  const wallNumber = (p, w) => paredes(p).indexOf(w) + 1;
+
+  function classifyOri(dx, dy) {
+    const a = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+    if (a < 8 || a > 172) return 'H';
+    if (Math.abs(a - 90) < 8) return 'V';
+    return 'L';
+  }
+
+  /* espessura da parede "transversal" que encosta na ponta (nó) da parede w */
+  function adjT(p, w, nodeId, nm) {
+    nm = nm || nodeMap(p);
+    const A = nm.get(w.a), B = nm.get(w.b);
+    const u = unit(sub(B, A));
+    let best = 0, bestS = 0.5;
+    for (const o of p.walls) {
+      if (o === w || o.kind === 'verif') continue;
+      if (o.a !== nodeId && o.b !== nodeId) continue;
+      const v = unit(sub(nm.get(o.b), nm.get(o.a)));
+      const s = Math.abs(cross(u, v));
+      if (s > bestS) { bestS = s; best = o.t; }
+    }
+    return best;
+  }
+
+
+  /* pontas de uma linha de verificação: eixos ou cantos internos */
+  function verifEnds(p, w, nm, corners) {
+    const A = nm.get(w.a), B = nm.get(w.b);
+    if (w.ref !== 'interna' || !corners) return [A, B];
+    const pick = (nid, N, toward) => {
+      const cs = corners.get(nid); if (!cs || !cs.length) return N;
+      let best = N, bd = Infinity;
+      for (const c of cs) { const d = len(sub(c, toward)); if (d < bd) { bd = d; best = c; } }
+      return best;
+    };
+    return [pick(w.a, A, B), pick(w.b, B, A)];
+  }
+  /* comprimento de eixo correspondente à medida de campo */
+  function axisTarget(p, w, nm) {
+    if (w.len == null) return null;
+    if (w.kind === 'verif') {
+      if (w.ref !== 'interna') return w.len;
+      const [a, b] = verifEnds(p, w, nm, geometry(p, { cotas: false }).corners);
+      return w.len + len(sub(nm.get(w.b), nm.get(w.a))) - len(sub(b, a));
+    }
+    const k = w.ref === 'interna' ? 1 : w.ref === 'externa' ? -1 : 0;
+    if (!k) return w.len;
+    return w.len + k * (adjT(p, w, w.a, nm) / 2 + adjT(p, w, w.b, nm) / 2);
+  }
+  /* deslocamento do início de medida em relação ao nó (para aberturas e cotas) */
+  function refShift(p, w, nodeId, nm) {
+    const k = w.ref === 'interna' ? 1 : w.ref === 'externa' ? -1 : 0;
+    return k * adjT(p, w, nodeId, nm) / 2;
+  }
+
+  /* ---------- sistema linear (eliminação de Gauss com pivotamento) ---------- */
+  function solveLinear(M, r) {
+    const n = r.length;
+    for (let c = 0; c < n; c++) {
+      let piv = c, mx = Math.abs(M[c][c]);
+      for (let i = c + 1; i < n; i++) if (Math.abs(M[i][c]) > mx) { mx = Math.abs(M[i][c]); piv = i; }
+      if (mx < 1e-14) continue;
+      if (piv !== c) { [M[c], M[piv]] = [M[piv], M[c]]; [r[c], r[piv]] = [r[piv], r[c]]; }
+      for (let i = c + 1; i < n; i++) {
+        const f = M[i][c] / M[c][c];
+        if (!f) continue;
+        for (let j = c; j < n; j++) M[i][j] -= f * M[c][j];
+        r[i] -= f * r[c];
+      }
+    }
+    const x = new Array(n).fill(0);
+    for (let i = n - 1; i >= 0; i--) {
+      let s = r[i];
+      for (let j = i + 1; j < n; j++) s -= M[i][j] * x[j];
+      x[i] = Math.abs(M[i][i]) < 1e-14 ? 0 : s / M[i][i];
+    }
+    return x;
+  }
+
+  /* ---------- AJUSTE: cada parede assume a sua medida; as não medidas mantêm o comprimento
+     e os ângulos se acomodam (mínimo deslocamento). Direção só fica travada se o usuário travar. ---------- */
+  function adjust(p, opts = {}) {
+    const n = p.nodes.length;
+    if (!n) return { ok: false, msg: 'Nada desenhado ainda.' };
+    const idx = new Map(p.nodes.map((nd, i) => [nd.id, i]));
+    const old = p.nodes.map((nd) => ({ x: nd.x, y: nd.y }));
+    const pilNode = p.pillars.map((pl) => old.findIndex((o) => Math.hypot(o.x - pl.x, o.y - pl.y) < 1e-4));
+    const W_MEAS = 100, W_LOCK = 100, W_LINE = 100, W_ANCHOR = 1e4, LAMBDA = 1e-2;
+    const nm0 = nodeMap(p);
+    // pontos em "T" / paredes alinhadas: o ponto continua na reta das duas paredes
+    const lines = [];
+    const byNode = new Map();
+    for (const w of p.walls) { if (w.kind === 'verif') continue; for (const k of [w.a, w.b]) { if (!byNode.has(k)) byNode.set(k, []); byNode.get(k).push(w); } }
+    for (const [nid, ws] of byNode) {
+      for (let i = 0; i < ws.length; i++) for (let j = i + 1; j < ws.length; j++) {
+        const oa = ws[i].a === nid ? ws[i].b : ws[i].a, ob = ws[j].a === nid ? ws[j].b : ws[j].a;
+        const N = nm0.get(nid), A = nm0.get(oa), B = nm0.get(ob);
+        const u = unit(sub(A, N)), v = unit(sub(B, N));
+        if (dot(u, v) < -0.996) lines.push([oa, nid, ob]); // praticamente em linha reta (< 5°)
+      }
+    }
+    // só as medidas informadas puxam o desenho; o resto acompanha com o menor deslocamento possível
+    const targets = p.walls.map((w) => w.kind === 'verif' ? ((w.use && w.len != null) ? axisTarget(p, w, nm0) : null) : (w.len != null ? axisTarget(p, w, nm0) : null));
+    // ponta travada (posição e ângulo) e ponta que se move sobre a própria reta da parede
+    const iAnc = opts.anchor != null ? idx.get(opts.anchor) : undefined;
+    const iMov = opts.mover != null ? idx.get(opts.mover) : undefined;
+    const lockU = (iAnc !== undefined && iMov !== undefined) ? unit(sub(old[iMov], old[iAnc])) : null;
+    // "manter ângulos retos": paredes que já estão na horizontal/vertical continuam assim
+    const sq = new Map();
+    if (p.settings.esquadro) for (const w of p.walls) {
+      if (w.kind === 'verif') continue;
+      const A = nm0.get(w.a), B = nm0.get(w.b), o = classifyOri(B.x - A.x, B.y - A.y);
+      const a = Math.abs(Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI) % 90;
+      if (o !== 'L' && (a < 2 || a > 88)) sq.set(w.id, o);
+    }
+    const N2 = 2 * n;
+    const startLen = p.walls.map((w) => { const A = nm0.get(w.a), B = nm0.get(w.b); return A && B ? len(sub(B, A)) : 0; });
+    let maxRel = 0;
+    targets.forEach((T, k) => { if (T != null && startLen[k] > 1e-6) maxRel = Math.max(maxRel, Math.abs(T - startLen[k]) / startLen[k]); });
+    const STAGES = maxRel > 0.08 ? Math.min(12, Math.ceil(maxRel / 0.05)) : 1;
+    for (let it = 0, stage = 1; stage <= STAGES; it++) {
+      const fr = stage / STAGES;
+      const M = Array.from({ length: N2 }, () => new Array(N2).fill(0)), r = new Array(N2).fill(0);
+      const addRow = (ents, res, wt) => { // ents: [[varIndex, coef]]
+        for (const [i, ci] of ents) { r[i] += wt * ci * res; for (const [j, cj] of ents) M[i][j] += wt * ci * cj; }
+      };
+      p.walls.forEach((w, k) => {
+        const T = targets[k] == null ? null : startLen[k] + (targets[k] - startLen[k]) * fr; const ia = idx.get(w.a), ib = idx.get(w.b);
+        if (ia === undefined || ib === undefined) return;
+        const A = p.nodes[ia], B = p.nodes[ib];
+        if (T != null) {
+          const d = sub(B, A), L = len(d), u = L < 1e-9 ? { x: 1, y: 0 } : mul(d, 1 / L);
+          const wt = W_MEAS;
+          addRow([[2 * ia, -u.x], [2 * ia + 1, -u.y], [2 * ib, u.x], [2 * ib + 1, u.y]], T - L, wt);
+        }
+        const ori = w.kind === 'verif' ? 'L' : (w.ori !== 'L' ? w.ori : (sq.get(w.id) || 'L'));
+        if (ori === 'H') addRow([[2 * ia + 1, -1], [2 * ib + 1, 1]], -(B.y - A.y), W_LOCK);
+        if (ori === 'V') addRow([[2 * ia, -1], [2 * ib, 1]], -(B.x - A.x), W_LOCK);
+      });
+      for (const [oa, nid, ob] of lines) {
+        const ia = idx.get(oa), iN = idx.get(nid), ib = idx.get(ob);
+        const A = p.nodes[ia], N = p.nodes[iN], B = p.nodes[ib];
+        const e = sub(B, A), L = len(e); if (L < 1e-9) continue;
+        const f = cross(e, sub(N, A)) / L;
+        addRow([[2 * iN, -e.y / L], [2 * iN + 1, e.x / L], [2 * ia, (B.y - N.y) / L], [2 * ia + 1, (N.x - B.x) / L], [2 * ib, (N.y - A.y) / L], [2 * ib + 1, -(N.x - A.x) / L]], -f, W_LINE);
+      }
+      if (iAnc !== undefined) {
+        const A = p.nodes[iAnc];
+        addRow([[2 * iAnc, 1]], old[iAnc].x - A.x, W_ANCHOR); addRow([[2 * iAnc + 1, 1]], old[iAnc].y - A.y, W_ANCHOR);
+        if (lockU) { const M2 = p.nodes[iMov], f = cross(lockU, sub(M2, old[iAnc])); addRow([[2 * iMov, -lockU.y], [2 * iMov + 1, lockU.x]], -f, W_ANCHOR); }
+      }
+      for (let i = 0; i < n; i++) { // fica perto de onde estava
+        M[2 * i][2 * i] += LAMBDA; r[2 * i] += LAMBDA * (old[i].x - p.nodes[i].x);
+        M[2 * i + 1][2 * i + 1] += LAMBDA; r[2 * i + 1] += LAMBDA * (old[i].y - p.nodes[i].y);
+      }
+      const dX = solveLinear(M, r);
+      let mx = 0; for (const v of dX) mx = Math.max(mx, Math.abs(v));
+      const k = mx > 0.3 ? 0.3 / mx : 1; // passo limitado: evita o desenho "dobrar"
+      p.nodes.forEach((nd, i) => { nd.x += k * dX[2 * i]; nd.y += k * dX[2 * i + 1]; });
+      if (mx < 1e-7 || it > 25 * stage) { stage++; }
+      if (it > 600) break;
+    }
+    // pilares, textos e cortes acompanham o desenho
+    const T = affineFit(old, p.nodes);
+    const mv = (o) => { const x = T[0] * o.x + T[1] * o.y + T[2], y = T[3] * o.x + T[4] * o.y + T[5]; o.x = x; o.y = y; };
+    p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } else mv(pl); });
+    p.labels.forEach(mv);
+    (p.cuts || []).forEach((c) => {
+      const hz = Math.abs(c.a.y - c.b.y) < 1e-6, vt = Math.abs(c.a.x - c.b.x) < 1e-6;
+      mv(c.a); mv(c.b);
+      if (hz) { const y = (c.a.y + c.b.y) / 2; c.a.y = c.b.y = y; }
+      if (vt) { const x = (c.a.x + c.b.x) / 2; c.a.x = c.b.x = x; }
+    });
+    return report(p);
+  }
+
+  /* 1ª medida informada: dá a escala ao croqui inteiro (mantém a forma) */
+  function scaleTo(p, w) {
+    const nm = nodeMap(p), A = nm.get(w.a), B = nm.get(w.b);
+    const T = axisTarget(p, w, nm), L = len(sub(B, A));
+    if (T == null || L < 1e-6) return;
+    const k = T / L, O = { x: A.x, y: A.y };
+    const sc = (o) => { o.x = O.x + (o.x - O.x) * k; o.y = O.y + (o.y - O.y) * k; };
+    p.nodes.forEach(sc); p.pillars.forEach(sc); p.labels.forEach(sc);
+    (p.cuts || []).forEach((c) => { sc(c.a); sc(c.b); });
+    for (const x of p.walls) for (const o of x.ops || []) { if (x.len == null) { o.d *= k; } }
+  }
+
+  function affineFit(A, B) {
+    const n = A.length;
+    let mx = 0, my = 0, nx = 0, ny = 0;
+    for (let i = 0; i < n; i++) { mx += A[i].x; my += A[i].y; nx += B[i].x; ny += B[i].y; }
+    mx /= n; my /= n; nx /= n; ny /= n;
+    const trans = [1, 0, nx - mx, 0, 1, ny - my];
+    if (n < 3) return trans;
+    let sxx = 0, sxy = 0, syy = 0, bx = [0, 0], by = [0, 0];
+    for (let i = 0; i < n; i++) {
+      const x = A[i].x - mx, y = A[i].y - my, u = B[i].x - nx, v = B[i].y - ny;
+      sxx += x * x; sxy += x * y; syy += y * y; bx[0] += x * u; bx[1] += y * u; by[0] += x * v; by[1] += y * v;
+    }
+    const det = sxx * syy - sxy * sxy;
+    if (Math.abs(det) < 1e-6 * Math.max(1, sxx * syy)) return trans;
+    const a = (bx[0] * syy - bx[1] * sxy) / det, b = (bx[1] * sxx - bx[0] * sxy) / det;
+    const d = (by[0] * syy - by[1] * sxy) / det, e = (by[1] * sxx - by[0] * sxy) / det;
+    return [a, b, nx - a * mx - b * my, d, e, ny - d * mx - e * my];
+  }
+
+  function report(p) {
+    const nm = nodeMap(p);
+    const ws = paredes(p);
+    const measured = ws.filter((w) => w.len != null);
+    const issues = [], checks = [];
+    for (const w of measured) {
+      const T = axisTarget(p, w, nm);
+      const L = len(sub(nm.get(w.b), nm.get(w.a)));
+      const d = L - T;
+      if (Math.abs(d) > 0.01) issues.push({ wall: w.id, num: wallNumber(p, w), med: w.len, got: w.len + d, diff: d });
+    }
+    let vi = 0;
+    const corners = p.walls.some((w) => w.kind === 'verif') ? geometry(p, { cotas: false }).corners : null;
+    for (const w of p.walls) {
+      if (w.kind !== 'verif') continue;
+      vi++;
+      const [va, vb] = verifEnds(p, w, nm, corners);
+      const L = len(sub(vb, va));
+      checks.push({ wall: w.id, num: vi, med: w.len, got: L, diff: w.len == null ? null : L - w.len, use: !!w.use, total: !!w.total });
+    }
+    return { ok: true, total: ws.length, measured: measured.length, issues, checks, hasDiag: p.walls.some((w) => w.kind === 'verif' && w.use && w.len != null && !w.total) };
+  }
+
+  /* ---------- GEOMETRIA: faces das paredes, junções, aberturas, cotas ---------- */
+  function lineX(p1, d1, p2, d2) {
+    const c = cross(d1, d2);
+    if (Math.abs(c) < 1e-6) return null;
+    const s = cross(sub(p2, p1), d2) / c;
+    return add(p1, mul(d1, s));
+  }
+
+  function centroid(p) {
+    if (!p.nodes.length) return { x: 0, y: 0 };
+    let x = 0, y = 0; for (const n of p.nodes) { x += n.x; y += n.y; }
+    return { x: x / p.nodes.length, y: y / p.nodes.length };
+  }
+
+  function geometry(p, opts = {}) {
+    const nm = nodeMap(p);
+    const prims = [], quads = [], holes = [];
+    const L = (layer, a, b) => prims.push({ type: 'line', layer, a, b });
+    const T = (layer, x, y, h, text, rot = 0) => prims.push({ type: 'text', layer, x, y, h, text, rot });
+    const ws = paredes(p).filter((w) => nm.get(w.a) && nm.get(w.b) && w.a !== w.b);
+    // pontas por nó
+    const endsAt = new Map();
+    const ends = new Map(); // key wall.id+':a'|':b'
+    for (const w of ws) {
+      for (const side of ['a', 'b']) {
+        const nid = w[side], other = side === 'a' ? w.b : w.a;
+        const N = nm.get(nid), O = nm.get(other);
+        const d = unit(sub(O, N));
+        const e = { w, nid, d, ang: Math.atan2(d.y, d.x), t: w.t, N, left: null, right: null, cap: false };
+        ends.set(w.id + ':' + side, e);
+        if (!endsAt.has(nid)) endsAt.set(nid, []);
+        endsAt.get(nid).push(e);
+      }
+    }
+    for (const [, list] of endsAt) {
+      list.sort((a, b) => a.ang - b.ang);
+      if (list.length === 1) {
+        const e = list[0], nl = perp(e.d);
+        e.left = add(e.N, mul(nl, e.t / 2)); e.right = sub(e.N, mul(nl, e.t / 2)); e.cap = true;
+        continue;
+      }
+      for (let i = 0; i < list.length; i++) {
+        const e1 = list[i], e2 = list[(i + 1) % list.length];
+        const n1 = perp(e1.d), n2 = perp(e2.d);
+        const p1 = add(e1.N, mul(n1, e1.t / 2));      // lado esquerdo de e1
+        const p2 = sub(e2.N, mul(n2, e2.t / 2));      // lado direito de e2
+        let X = lineX(p1, e1.d, p2, e2.d);
+        const lim = 3 * Math.max(e1.t, e2.t);
+        if (X && len(sub(X, e1.N)) > lim) X = null;
+        e1.left = X || p1; e2.right = X || p2;
+      }
+    }
+    const corners = new Map();
+    for (const [nid, list] of endsAt) corners.set(nid, list.flatMap((e) => [e.left, e.right]));
+    // paredes
+    for (const w of ws) {
+      const A = nm.get(w.a), B = nm.get(w.b);
+      const u = unit(sub(B, A)), n = perp(u), Lw = len(sub(B, A));
+      const ea = ends.get(w.id + ':a'), eb = ends.get(w.id + ':b');
+      const sP1 = ea.left, sP2 = eb.right;   // face +n
+      const sM1 = ea.right, sM2 = eb.left;   // face -n
+      quads.push({ wall: w.id, pts: [sP1, sP2, sM2, sM1] });
+      // aberturas: intervalos ao longo do eixo
+      const ivs = (w.ops || []).map((o) => {
+        const s0 = o.d + refShift(p, w, w.a, nm);
+        return { o, s0: Math.max(0, s0), s1: Math.min(Lw, s0 + o.w) };
+      }).filter((v) => v.s1 - v.s0 > 0.01).sort((a, b) => a.s0 - b.s0);
+      const at = (s, off) => add(add(A, mul(u, s)), mul(n, off));
+      const tOf = (P) => dot(sub(P, A), u);
+      const face = (P1, P2, off) => {
+        let t1 = tOf(P1), t2 = tOf(P2);
+        const pt = (t) => add(P1, mul(u, t - t1));
+        let cur = t1;
+        for (const v of ivs) {
+          if (v.s0 > cur + 1e-4) L('PAREDES', pt(cur), pt(Math.min(v.s0, t2)));
+          cur = Math.max(cur, v.s1);
+        }
+        if (t2 > cur + 1e-4) L('PAREDES', pt(cur), P2);
+      };
+      face(sP1, sP2, w.t / 2);
+      face(sM1, sM2, -w.t / 2);
+      if (ea.cap) L('PAREDES', sP1, sM1);
+      if (eb.cap) L('PAREDES', sP2, sM2);
+      for (const v of ivs) {
+        const o = v.o, h = w.t / 2;
+        holes.push({ pts: [at(v.s0, h + 0.005), at(v.s1, h + 0.005), at(v.s1, -h - 0.005), at(v.s0, -h - 0.005)] });
+        L('PAREDES', at(v.s0, h), at(v.s0, -h));
+        L('PAREDES', at(v.s1, h), at(v.s1, -h));
+        const wd = v.s1 - v.s0;
+        const sg = o.side === -1 ? -1 : 1, E = 'ESQUADRIAS';
+        const swing = (hingeS, closedSign, r, side) => { // folha de abrir com arco
+          const H = at(hingeS, side * h), leaf = mul(n, side), closed = mul(u, closedSign);
+          L(E, H, add(H, mul(leaf, r)));
+          const a1 = Math.atan2(closed.y, closed.x) * 180 / Math.PI, a2 = Math.atan2(leaf.y, leaf.x) * 180 / Math.PI;
+          const ccw = cross(closed, leaf) > 0;
+          prims.push({ type: 'arc', layer: E, c: H, r, a0: ccw ? a1 : a2, a1: ccw ? a2 : a1 });
+        };
+        const box = (sa, sb, o1, o2) => { L(E, at(sa, o1), at(sb, o1)); L(E, at(sa, o2), at(sb, o2)); L(E, at(sa, o1), at(sa, o2)); L(E, at(sb, o1), at(sb, o2)); };
+        const dashed = (sa, sb, off) => { const st = 0.12; for (let x = sa; x < sb - 1e-6; x += 2 * st) L(E, at(x, off), at(Math.min(sb, x + st), off)); };
+        const mdl = opModel(o);
+        if (o.type === 'P') {
+          if (mdl === 'abrir2') { swing(v.s0, 1, wd / 2, sg); swing(v.s1, -1, wd / 2, sg); }
+          else if (mdl === 'correr') { // folha corre por fora da face, sobrepondo a parede
+            const o1 = sg * (h + 0.01), o2 = sg * (h + 0.05), shift = o.hinge === 1 ? -wd * 0.9 : wd * 0.9;
+            box(v.s0 + shift, v.s1 + shift, o1, o2);
+          } else if (mdl === 'correr2') {
+            const m = (v.s0 + v.s1) / 2;
+            box(v.s0, m + 0.04, sg * 0.01, sg * 0.04); box(m - 0.04, v.s1, -sg * 0.01, -sg * 0.04);
+          } else if (mdl === 'sanfonada') {
+            const k = Math.max(4, Math.round(wd / 0.15)), st = wd / k;
+            for (let i = 0; i < k; i++) { const za = (i % 2 ? 1 : 0) * sg * 0.12, zb = (i % 2 ? 0 : 1) * sg * 0.12; L(E, at(v.s0 + i * st, za), at(v.s0 + (i + 1) * st, zb)); }
+          } else if (mdl === 'enrolar') { dashed(v.s0, v.s1, 0); dashed(v.s0, v.s1, sg * 0.08); }
+          else if (mdl === 'pivotante') {
+            const pv = o.hinge === 1 ? v.s1 - wd * 0.15 : v.s0 + wd * 0.15, P0 = at(pv, 0), dir = mul(n, sg);
+            L(E, sub(P0, mul(dir, wd * 0.15)), add(P0, mul(dir, wd * 0.85)));
+            const big = wd * 0.85, cl = o.hinge === 1 ? mul(u, -1) : u, a1 = Math.atan2(cl.y, cl.x) * 180 / Math.PI, a2 = Math.atan2(dir.y, dir.x) * 180 / Math.PI, ccw = cross(cl, dir) > 0;
+            prims.push({ type: 'arc', layer: E, c: P0, r: big, a0: ccw ? a1 : a2, a1: ccw ? a2 : a1 });
+          } else swing(o.hinge === 1 ? v.s1 : v.s0, o.hinge === 1 ? -1 : 1, wd, sg); // abrir 1 folha
+        } else if (o.type === 'J') {
+          L(E, at(v.s0, h), at(v.s1, h)); L(E, at(v.s0, -h), at(v.s1, -h));
+          const m = (v.s0 + v.s1) / 2;
+          if (mdl === 'correr') { L(E, at(v.s0, h / 3), at(m + 0.05, h / 3)); L(E, at(m - 0.05, -h / 3), at(v.s1, -h / 3)); }
+          else if (mdl === 'abrir') { L(E, at(v.s0, 0), at(v.s1, 0)); swing(v.s0, 1, wd / 2, sg); swing(v.s1, -1, wd / 2, sg); }
+          else if (mdl === 'maximar' || mdl === 'basculante') {
+            L(E, at(v.s0, 0), at(v.s1, 0));
+            const k = mdl === 'maximar' ? 1 : 0.5; // indicação da abertura projetada
+            L(E, at(v.s0, 0), at(m, sg * h * 2.2 * k)); L(E, at(m, sg * h * 2.2 * k), at(v.s1, 0));
+          } else if (mdl === 'pivotante') { L(E, at(v.s0, 0), at(v.s1, 0)); L(E, at(m - wd * 0.3, -sg * 0.18), at(m + wd * 0.3, sg * 0.18)); }
+          else L(E, at(v.s0, 0), at(v.s1, 0)); // fixa
+        }
+        if (o.label) {
+          const c = centroid(p);
+          const mid = at((v.s0 + v.s1) / 2, 0);
+          const sg = dot(sub(mid, c), n) >= 0 ? 1 : -1;
+          const pos = at((v.s0 + v.s1) / 2, sg * (h + 0.17));
+          T('TEXTOS', pos.x, pos.y, 0.10, o.label, readable(u));
+        }
+      }
+      // cotas
+      if (opts.cotas !== false) {
+        const c = centroid(p);
+        const mid = at(Lw / 2, 0);
+        const sg = dot(sub(mid, c), n) >= 0 ? 1 : -1;
+        let s0 = 0, s1 = Lw, txt, layer;
+        if (w.len != null) {
+          s0 = refShift(p, w, w.a, nm);
+          s1 = Lw - refShift(p, w, w.b, nm);
+          txt = fmt(w.len); layer = 'COTAS';
+          const T0 = axisTarget(p, w, nm);
+          if (Math.abs(Lw - T0) > 0.01) { txt += ' (desenho ' + fmt(w.len + Lw - T0) + ')'; layer = 'COTAS-DIVERGENTES'; }
+        } else {
+          s0 = refShift(p, w, w.a, nm); s1 = Lw - refShift(p, w, w.b, nm);
+          txt = '~' + fmt(s1 - s0); layer = 'COTAS-ESTIMADAS';
+        }
+        const off = sg * (w.t / 2 + 0.35);
+        const d0 = at(s0, off), d1 = at(s1, off);
+        L(layer, d0, d1);
+        L(layer, at(s0, sg * (w.t / 2 + 0.05)), at(s0, off + sg * 0.08));
+        L(layer, at(s1, sg * (w.t / 2 + 0.05)), at(s1, off + sg * 0.08));
+        const tk = mul(unit(add(u, n)), 0.05);
+        L(layer, sub(d0, tk), add(d0, tk));
+        L(layer, sub(d1, tk), add(d1, tk));
+        const tp = at((s0 + s1) / 2, off + sg * 0.11);
+        T(layer, tp.x, tp.y, 0.12, txt, readable(u));
+      }
+    }
+    // linhas de verificação (diagonais)
+    let vi = 0;
+    for (const w of p.walls) {
+      if (w.kind !== 'verif') continue;
+      vi++;
+      if (!nm.get(w.a) || !nm.get(w.b)) continue;
+      const [A, B] = verifEnds(p, w, nm, corners);
+      L('VERIFICACAO', A, B);
+      const u = unit(sub(B, A)), m = mul(add(A, B), 0.5), q = add(m, mul(perp(u), 0.12));
+      T('VERIFICACAO', q.x, q.y, 0.10, (w.total ? 'Total' : 'D' + vi) + (w.len != null ? ' = ' + fmt(w.len) : ''), readable(u));
+    }
+    // pilares
+    p.pillars.forEach((pl, i) => {
+      const c = pillarCorners(pl);
+      prims.push({ type: 'solid', layer: 'PILARES', pts: c });
+      for (let k = 0; k < 4; k++) L('PILARES', c[k], c[(k + 1) % 4]);
+      const r = Math.max(pl.bw, pl.bh) / 2;
+      T('PILARES', pl.x + r + 0.14, pl.y + r * 0.6 + 0.08, 0.10, pl.name || ('P' + (i + 1)), 0);
+    });
+    // cortes
+    if (opts.cortes !== false && (p.cuts || []).length) sections(p, prims, nm, ws, T, L);
+    for (const lb of p.labels) T('TEXTOS', lb.x, lb.y, lb.h || 0.2, lb.text, 0);
+    return { prims, quads, holes, corners };
+  }
+  function pillarCorners(pl) {
+    const th = (pl.rot || 0) * Math.PI / 180, cs = Math.cos(th), sn = Math.sin(th);
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => {
+      const x = i * pl.bw / 2, y = j * pl.bh / 2;
+      return { x: pl.x + x * cs - y * sn, y: pl.y + x * sn + y * cs };
+    });
+  }
+
+  function planBox(p) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
+    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); });
+    return x0 === Infinity ? null : { x0, y0, x1, y1 };
+  }
+
+  /* ---------- CORTES: paredes cortadas pela linha de corte, com aberturas, piso e laje/forro ---------- */
+  function sectionData(p, cut, nm, ws) {
+    const st = p.settings;
+    const C0 = cut.a, C1 = cut.b, Lc = len(sub(C1, C0));
+    if (Lc < 0.05) return null;
+    const c = unit(sub(C1, C0));
+    const hits = [];
+    for (const w of ws) {
+      const A = nm.get(w.a), B = nm.get(w.b);
+      const e = sub(B, A), Lw = len(e), u = unit(e);
+      const den = cross(c, u);
+      if (Math.abs(den) < 0.05) continue; // quase paralela
+      const sc = cross(sub(A, C0), u) / den;     // posição ao longo do corte
+      const tw = cross(sub(A, C0), c) / den;     // posição ao longo da parede
+      if (sc < 0 || sc > Lc || tw < -w.t / 2 || tw > Lw + w.t / 2) continue;
+      const tc = Math.min(w.t / Math.abs(den), 3 * w.t);
+      let op = null;
+      for (const o of w.ops || []) {
+        const s0 = o.d + refShift(p, w, w.a, nm);
+        if (tw >= s0 && tw <= s0 + o.w) { op = o; break; }
+      }
+      const s = cut.flip ? Lc - sc : sc;
+      hits.push({ s, tc, h: w.h || st.pd, op, w });
+    }
+    hits.sort((a, b) => a.s - b.s);
+    return { hits, Lc };
+  }
+  const OP_MODELS = {
+    P: [['abrir', 'De abrir (1 folha)', 0.80, 2.10], ['abrir2', 'De abrir (2 folhas)', 1.60, 2.10], ['correr', 'De correr (1 folha)', 0.90, 2.10], ['correr2', 'De correr (2 folhas)', 1.60, 2.10], ['pivotante', 'Pivotante', 1.00, 2.40], ['sanfonada', 'Sanfonada (camarão)', 0.80, 2.10], ['enrolar', 'De enrolar (portão)', 3.00, 3.00]],
+    J: [['correr', 'De correr', 1.20, 1.00], ['abrir', 'De abrir (2 folhas)', 1.00, 1.00], ['maximar', 'Maxim-ar', 0.60, 0.60], ['basculante', 'Basculante', 0.60, 0.40], ['pivotante', 'Pivotante', 1.00, 1.00], ['fixa', 'Fixa', 1.00, 1.00]],
+    V: [['vao', 'Vão livre', 1.00, 2.10]]
+  };
+  const opModel = (o) => o.model || (o.type === 'P' ? 'abrir' : o.type === 'J' ? 'correr' : 'vao');
+  const opH = (o) => o.h != null ? o.h : (o.type === 'J' ? 1.00 : 2.10);
+  const opPe = (o) => o.type === 'J' ? (o.pe != null ? o.pe : 1.10) : 0;
+
+  /* telhado: altura da face inferior da telha em cada ponto da planta */
+  function roofModel(p) {
+    const st = p.settings, rf = st.roof, nb = p.nodes;
+    if (!nb.length) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const n of nb) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+    const h = (st.t || 0.15) / 2; x0 -= h; y0 -= h; x1 += h; y1 += h; // faces externas
+    const i = Math.max(0, rf.i || 0), xc = (x0 + x1) / 2, yc = (y0 + y1) / 2;
+    let z, rise;
+    if (rf.aguas === 1) {
+      const q = rf.queda;
+      z = (P) => st.pd + i * (q === 'baixo' ? P.y - y0 : q === 'cima' ? y1 - P.y : q === 'esquerda' ? P.x - x0 : x1 - P.x);
+      rise = i * ((q === 'baixo' || q === 'cima') ? (y1 - y0) : (x1 - x0));
+    } else {
+      z = rf.cum === 'V' ? (P) => st.pd + i * ((x1 - x0) / 2 - Math.abs(P.x - xc)) : (P) => st.pd + i * ((y1 - y0) / 2 - Math.abs(P.y - yc));
+      rise = i * (rf.cum === 'V' ? (x1 - x0) / 2 : (y1 - y0) / 2);
+    }
+    return { z, rise, xc, yc };
+  }
+
+  function sections(p, prims, nm, ws, T, L) {
+    const st = p.settings, pb = planBox(p);
+    if (!pb) return;
+    const rm = st.top === 'telhado' ? roofModel(p) : null;
+    const topT = st.top === 'laje' ? (st.lajeT || 0.10) : rm ? rm.rise + 0.3 : 0;
+    let baseY = pb.y0 - 2.6 - (st.pd + topT);
+    p.cuts.forEach((cut) => {
+      const nmC = cut.name || 'A';
+      // marcação na planta
+      const c = unit(sub(cut.b, cut.a)), nv = mul(perp(c), cut.flip ? -1 : 1);
+      L('CORTES', cut.a, cut.b);
+      for (const [E, sg] of [[cut.a, -1], [cut.b, 1]]) {
+        const tip = add(E, mul(nv, 0.45));
+        L('CORTES', E, tip);
+        L('CORTES', tip, add(tip, add(mul(nv, -0.15), mul(c, 0.1))));
+        L('CORTES', tip, add(tip, add(mul(nv, -0.15), mul(c, -0.1))));
+        const lp = add(add(E, mul(c, sg * 0.3)), mul(nv, 0.25));
+        T('CORTES', lp.x, lp.y, 0.22, nmC, 0);
+      }
+      const sd = sectionData(p, cut, nm, ws);
+      if (!sd || !sd.hits.length) return;
+      const X = (s) => pb.x0 + s, Y = (z) => baseY + z;
+      const P2 = (s, z) => ({ x: X(s), y: Y(z) });
+      const rect = (s0, s1, z0, z1, layer) => {
+        if (z1 - z0 < 1e-4 || s1 - s0 < 1e-4) return;
+        const pts = [P2(s0, z0), P2(s1, z0), P2(s1, z1), P2(s0, z1)];
+        prims.push({ type: 'solid', layer: layer + '-HACH', pts });
+        for (let k = 0; k < 4; k++) L(layer, pts[k], pts[(k + 1) % 4]);
+      };
+      const hs = sd.hits;
+      const xmin = hs[0].s - hs[0].tc / 2, xmax = hs[hs.length - 1].s + hs[hs.length - 1].tc / 2;
+      for (const h of hs) {
+        const s0 = h.s - h.tc / 2, s1 = h.s + h.tc / 2;
+        if (!h.op) rect(s0, s1, 0, h.h, 'CORTE-PAREDES');
+        else {
+          const o = h.op, pe = opPe(o), top = Math.min(h.h, pe + opH(o));
+          if (o.type === 'J') rect(s0, s1, 0, pe, 'CORTE-PAREDES');
+          rect(s0, s1, top, h.h, 'CORTE-PAREDES');
+          if (o.type === 'J') { L('ESQUADRIAS', P2(h.s, pe), P2(h.s, top)); }
+          else if (o.type === 'P') { L('ESQUADRIAS', P2(s0, top), P2(s0, 0)); L('ESQUADRIAS', P2(s1, top), P2(s1, 0)); }
+          // cotas verticais da abertura
+          const cx = s1 + 0.25;
+          const vdim = (z0, z1, txt) => { L('COTAS', P2(cx, z0), P2(cx, z1)); for (const z of [z0, z1]) { L('COTAS', P2(cx - 0.05, z - 0.05), P2(cx + 0.05, z + 0.05)); L('COTAS', P2(s1 + 0.03, z), P2(cx + 0.08, z)); } const m = P2(cx + 0.12, (z0 + z1) / 2); T('COTAS', m.x, m.y, 0.10, txt, 90); };
+          if (o.type === 'J' && pe > 0) vdim(0, pe, fmt(pe));
+          vdim(pe, top, fmt(top - pe));
+        }
+      }
+      // piso
+      L('CORTE-PISO', P2(xmin - 0.4, 0), P2(xmax + 0.4, 0));
+      L('CORTE-PISO', P2(xmin - 0.4, -0.06), P2(xmax + 0.4, -0.06));
+      // cobertura
+      if (st.top === 'laje') rect(xmin, xmax, st.pd, st.pd + topT, 'CORTE-LAJE');
+      else if (st.top === 'forro') L('CORTE-LAJE', P2(xmin, st.pd), P2(xmax, st.pd));
+      else if (rm) {
+        const rf = st.roof, Lc = len(sub(cut.b, cut.a)), cu = unit(sub(cut.b, cut.a));
+        const planAt = (S) => add(cut.a, mul(cu, cut.flip ? Lc - S : S));
+        const zAt = (S) => rm.z(planAt(S));
+        const s0 = xmin - (rf.beiral || 0), s1 = xmax + (rf.beiral || 0);
+        const Ss = [s0, s1];
+        if (rf.aguas !== 1) { // onde o corte cruza a cumeeira
+          const k = rf.cum === 'V' ? 'x' : 'y', target = rf.cum === 'V' ? rm.xc : rm.yc;
+          const dir = cut.flip ? -cu[k] : cu[k], base = planAt(0)[k];
+          if (Math.abs(dir) > 1e-6) { const S = (target - base) / dir; if (S > s0 && S < s1) Ss.push(S); }
+        }
+        Ss.sort((a, b) => a - b);
+        const tt = 0.06; // espessura gráfica da telha
+        for (let k = 0; k + 1 < Ss.length; k++) {
+          const a = Ss[k], b = Ss[k + 1], za = zAt(a), zb = zAt(b);
+          const q = [P2(a, za), P2(b, zb), P2(b, zb + tt), P2(a, za + tt)];
+          prims.push({ type: 'solid', layer: 'CORTE-TELHADO-HACH', pts: q });
+          L('CORTE-TELHADO', q[0], q[1]); L('CORTE-TELHADO', q[3], q[2]);
+        }
+        L('CORTE-TELHADO', P2(s0, zAt(s0)), P2(s0, zAt(s0) + tt));
+        L('CORTE-TELHADO', P2(s1, zAt(s1)), P2(s1, zAt(s1) + tt));
+        // estrutura: linha de apoio sobre as paredes externas até a telha (oitão/respaldo)
+        for (const h of [hs[0], hs[hs.length - 1]]) {
+          const zt = zAt(h.s); if (zt - h.h > 0.02) rect(h.s - h.tc / 2, h.s + h.tc / 2, h.h, zt, 'CORTE-PAREDES');
+        }
+        if (rf.forro) L('CORTE-LAJE', P2(xmin, st.pd), P2(xmax, st.pd));
+        const zmax = Math.max(...Ss.map(zAt));
+        const mid = (s0 + s1) / 2, lbl = P2(mid, zmax + 0.35);
+        T('TEXTOS', lbl.x, lbl.y, 0.12, `${rf.telha || 'Telhado'} - i = ${Math.round((rf.i || 0) * 100)}%`, 0);
+        if (zmax - st.pd > 0.05) {
+          const cx = xmax + (rf.beiral || 0) + 0.35;
+          L('COTAS', P2(cx, st.pd), P2(cx, zmax));
+          for (const z of [st.pd, zmax]) L('COTAS', P2(cx - 0.05, z - 0.05), P2(cx + 0.05, z + 0.05));
+          const m = P2(cx + 0.13, (st.pd + zmax) / 2); T('COTAS', m.x, m.y, 0.10, fmt(zmax - st.pd), 90);
+        }
+      }
+      // pé-direito
+      const dx = xmin - 0.45;
+      L('COTAS', P2(dx, 0), P2(dx, st.pd));
+      for (const z of [0, st.pd]) { L('COTAS', P2(dx - 0.05, z - 0.05), P2(dx + 0.05, z + 0.05)); L('COTAS', P2(dx - 0.08, z), P2(xmin - 0.03, z)); }
+      const pm = P2(dx - 0.13, st.pd / 2); T('COTAS', pm.x, pm.y, 0.10, 'PD ' + fmt(st.pd), 90);
+      // vãos livres entre paredes
+      for (let i = 0; i + 1 < hs.length; i++) {
+        const a = hs[i].s + hs[i].tc / 2, b = hs[i + 1].s - hs[i + 1].tc / 2;
+        if (b - a < 0.05) continue;
+        L('COTAS', P2(a, -0.4), P2(b, -0.4));
+        for (const sx of [a, b]) { L('COTAS', P2(sx - 0.05, -0.45), P2(sx + 0.05, -0.35)); L('COTAS', P2(sx, -0.1), P2(sx, -0.48)); }
+        const m = P2((a + b) / 2, -0.29); T('COTAS', m.x, m.y, 0.10, fmt(b - a), 0);
+      }
+      const tt = P2((xmin + xmax) / 2, -0.95); T('TEXTOS', tt.x, tt.y, 0.2, 'CORTE ' + nmC + '-' + nmC, 0);
+      baseY -= st.pd + topT + 3.0;
+    });
+  }
+
+  const readable = (u) => { let a = Math.atan2(u.y, u.x) * 180 / Math.PI; if (a > 90.01) a -= 180; if (a <= -90) a += 180; return a; };
+
+  function bbox(p, geo) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
+    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc);
+    if (geo) for (const q of geo.prims) { if (q.a) { inc(q.a); inc(q.b); } }
+    if (x0 === Infinity) return null;
+    return { x0, y0, x1, y1 };
+  }
+
+  /* ---------- DXF R12 (abre no AutoCAD) ---------- */
+  const LAYERS = [
+    ['PAREDES', 7], ['ESQUADRIAS', 4], ['PILARES', 1], ['COTAS', 3], ['COTAS-ESTIMADAS', 30], ['COTAS-DIVERGENTES', 6],
+    ['VERIFICACAO', 6], ['TEXTOS', 2], ['INFO', 8], ['CORTES', 5],
+    ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31]
+  ];
+  const enc = (s) => String(s).replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
+  const num = (v) => (Math.round(v * 1e6) / 1e6).toString();
+
+  function toDXF(p) {
+    const geo = geometry(p);
+    const o = [];
+    const g = (c, v) => { o.push(String(c)); o.push(String(v)); };
+    g(0, 'SECTION'); g(2, 'HEADER');
+    g(9, '$ACADVER'); g(1, 'AC1009');
+    g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1252');
+    g(9, '$INSUNITS'); g(70, 6);
+    g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'TABLES');
+    g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 1);
+    g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, 0); g(3, 'Solid line'); g(72, 65); g(73, 0); g(40, 0.0);
+    g(0, 'ENDTAB');
+    g(0, 'TABLE'); g(2, 'LAYER'); g(70, LAYERS.length + 1);
+    g(0, 'LAYER'); g(2, '0'); g(70, 0); g(62, 7); g(6, 'CONTINUOUS');
+    for (const [nme, col] of LAYERS) { g(0, 'LAYER'); g(2, nme); g(70, 0); g(62, col); g(6, 'CONTINUOUS'); }
+    g(0, 'ENDTAB');
+    g(0, 'TABLE'); g(2, 'STYLE'); g(70, 1);
+    g(0, 'STYLE'); g(2, 'STANDARD'); g(70, 0); g(40, 0.0); g(41, 1.0); g(50, 0.0); g(71, 0); g(42, 0.2); g(3, 'txt'); g(4, '');
+    g(0, 'ENDTAB');
+    g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'ENTITIES');
+    const text = (layer, x, y, h, s, rot) => {
+      g(0, 'TEXT'); g(8, layer); g(10, num(x)); g(20, num(y)); g(30, 0); g(40, num(h)); g(1, enc(s));
+      if (rot) g(50, num(rot));
+      g(72, 1); g(11, num(x)); g(21, num(y)); g(31, 0); g(73, 2);
+    };
+    for (const q of geo.prims) {
+      if (q.type === 'line') {
+        g(0, 'LINE'); g(8, q.layer); g(10, num(q.a.x)); g(20, num(q.a.y)); g(30, 0); g(11, num(q.b.x)); g(21, num(q.b.y)); g(31, 0);
+      } else if (q.type === 'arc') {
+        g(0, 'ARC'); g(8, q.layer); g(10, num(q.c.x)); g(20, num(q.c.y)); g(30, 0); g(40, num(q.r)); g(50, num(q.a0)); g(51, num(q.a1));
+      } else if (q.type === 'solid') {
+        const [a, b, c, d] = q.pts; // ordem do SOLID: 1,2,4,3
+        g(0, 'SOLID'); g(8, q.layer);
+        g(10, num(a.x)); g(20, num(a.y)); g(30, 0);
+        g(11, num(b.x)); g(21, num(b.y)); g(31, 0);
+        g(12, num(d.x)); g(22, num(d.y)); g(32, 0);
+        g(13, num(c.x)); g(23, num(c.y)); g(33, 0);
+      } else if (q.type === 'text') text(q.layer, q.x, q.y, q.h, q.text, q.rot);
+    }
+    // bloco de informações do levantamento (abaixo do desenho)
+    const bb = bbox(p, geo);
+    if (bb) {
+      const i = p.info || {};
+      const lines = [
+        'LEVANTAMENTO DE CAMPO - ' + (p.name || ''),
+        i.obra && 'Obra: ' + i.obra, i.local && 'Local: ' + i.local, i.coord && 'Coordenadas: ' + i.coord,
+        i.data && 'Data: ' + i.data.split('-').reverse().join('/'), i.resp && 'Responsavel: ' + i.resp,
+        'Medidas em metros. Cotas "~" = estimadas pelo croqui (nao medidas).',
+        'Cotas com "(desenho ...)" = medida informada que nao bate com o desenho; conferir em campo.',
+        i.obs && 'Obs.: ' + i.obs
+      ].filter(Boolean);
+      let y = bb.y0 - 1.2;
+      for (const s of lines) {
+        g(0, 'TEXT'); g(8, 'INFO'); g(10, num(bb.x0)); g(20, num(y)); g(30, 0); g(40, 0.15); g(1, enc(s));
+        y -= 0.3;
+      }
+    }
+    g(0, 'ENDSEC'); g(0, 'EOF');
+    return o.join('\r\n') + '\r\n';
+  }
+
+  /* ---------- ZIP (sem compressão) ---------- */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  function zip(files) { // [{name, data:Uint8Array}]
+    const te = new TextEncoder();
+    const parts = [], central = [];
+    let off = 0;
+    const d = new Date();
+    const dosT = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosD = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (const f of files) {
+      const nm = te.encode(f.name), data = f.data, crc = crc32(data);
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint16(10, dosT, true); h.setUint16(12, dosD, true); h.setUint32(14, crc, true);
+      h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+      parts.push(new Uint8Array(h.buffer), nm, data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, dosT, true); c.setUint16(14, dosD, true); c.setUint32(16, crc, true);
+      c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true);
+      c.setUint32(42, off, true);
+      central.push(new Uint8Array(c.buffer), nm);
+      off += 30 + nm.length + data.length;
+    }
+    const csize = central.reduce((s, a) => s + a.length, 0);
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, csize, true); e.setUint32(16, off, true);
+    const all = [...parts, ...central, new Uint8Array(e.buffer)];
+    const out = new Uint8Array(all.reduce((s, a) => s + a.length, 0));
+    let k = 0; for (const a of all) { out.set(a, k); k += a.length; }
+    return out;
+  }
+
+
+  /* ---------- croqui lido de uma foto (JSON vindo do Claude) → paredes ---------- */
+  function fromSketch(p, data) {
+    const tol = 0.12;
+    const walls = Array.isArray(data && data.walls) ? data.walls : [];
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v)) ? v : (typeof v === 'string' ? parseNum(v) : null);
+    const getNode = (x, y) => {
+      for (const n of p.nodes) if (Math.hypot(n.x - x, n.y - y) < tol) return n;
+      const n = { id: uid('n'), x, y }; p.nodes.push(n); return n;
+    };
+    let made = 0, measured = 0;
+    for (const r of walls) {
+      const x1 = num(r.x1), y1 = num(r.y1), x2 = num(r.x2), y2 = num(r.y2);
+      if ([x1, y1, x2, y2].some((v) => v == null)) continue;
+      const a = getNode(x1, y1), b = getNode(x2, y2);
+      if (a === b) continue;
+      if (p.walls.some((w) => (w.a === a.id && w.b === b.id) || (w.a === b.id && w.b === a.id))) continue;
+      const Ls = Math.hypot(b.x - a.x, b.y - a.y);
+      const L = num(r.len);
+      const w = { id: uid('w'), a: a.id, b: b.id, t: p.settings.t, len: L && L > 0 ? L : null, ref: p.settings.ref, ori: 'L', kind: 'parede', ops: [] };
+      if (w.len != null) measured++;
+      for (const o of Array.isArray(r.openings) ? r.openings : []) {
+        const type = ['P', 'J', 'V'].includes(String(o.type).toUpperCase()) ? String(o.type).toUpperCase() : 'V';
+        const ow = num(o.w) || (type === 'P' ? 0.8 : type === 'J' ? 1.2 : 1.0);
+        const pos = Math.min(1, Math.max(0, num(o.pos) ?? 0.5));
+        const base = w.len || Ls;
+        w.ops.push({ id: uid('o'), type, w: ow, d: Math.max(0, pos * base - ow / 2), hinge: 0, side: 1, label: o.label ? String(o.label).slice(0, 40) : '' });
+      }
+      p.walls.push(w); made++;
+    }
+    // encontros em "T": ponto que cai no meio de outra parede divide essa parede
+    for (const n of p.nodes.slice()) {
+      for (const w of p.walls.slice()) {
+        if (w.a === n.id || w.b === n.id) continue;
+        const nm = nodeMap(p), A = nm.get(w.a), B = nm.get(w.b);
+        const e = sub(B, A), L2 = dot(e, e); if (L2 < 1e-9) continue;
+        const t = dot(sub(n, A), e) / L2;
+        if (t <= 0.02 || t >= 0.98) continue;
+        const Q = add(A, mul(e, t));
+        if (len(sub(n, Q)) > tol) continue;
+        const s = t * Math.sqrt(L2);
+        const w2 = { ...w, id: uid('w'), a: n.id, b: w.b, len: null, ops: [] };
+        const keep = [];
+        for (const o of w.ops) { if (o.d < s) keep.push(o); else w2.ops.push({ ...o, d: o.d - s }); }
+        if (w.len != null) keepTotal(p, w);
+        w.ops = keep; w.b = n.id; w.len = null;
+        p.walls.splice(p.walls.indexOf(w) + 1, 0, w2);
+      }
+    }
+    for (const lb of Array.isArray(data && data.labels) ? data.labels : []) {
+      const x = num(lb.x), y = num(lb.y); if (x == null || y == null || !lb.text) continue;
+      p.labels.push({ id: uid('t'), x, y, text: String(lb.text).slice(0, 40), h: 0.2 });
+    }
+    for (const pl of Array.isArray(data && data.pillars) ? data.pillars : []) {
+      const x = num(pl.x), y = num(pl.y); if (x == null || y == null) continue;
+      p.pillars.push({ id: uid('p'), x, y, bw: p.settings.pw || 0.15, bh: p.settings.ph || 0.30, rot: 0, name: 'P' + (p.pillars.length + 1) });
+    }
+    if (p.walls.some((w) => w.len != null)) adjust(p);
+    return { walls: made, measured, total: paredes(p).length };
+  }
+  /* parede medida que é dividida: a medida vira uma cota total usada no ajuste */
+  function keepTotal(p, w) {
+    if (w.len == null) return;
+    p.walls.push({ id: uid('w'), a: w.a, b: w.b, t: 0, len: w.len, ref: w.ref === 'eixo' ? 'eixo' : 'interna', ori: 'L', kind: 'verif', use: false, total: true, ops: [] });
+  }
+
+  /* ---------- edição de uma medida com o resto do desenho travado ----------
+     Todas as paredes mantêm a direção (ângulos travados); as paredes com medida mantêm a medida;
+     as sem medida esticam/encolhem para acompanhar. A parede editada cresce para o lado escolhido.
+     side: 'A' (a diferença vai para o lado A), 'B' (para o lado B) ou 'AB' (metade para cada lado)
+     carry: true  = paredes ligadas à ponta que se move andam junto (mantêm o ângulo)
+            false = paredes SEM medida ligadas à ponta que se move podem girar            */
+  function applyLength(p, w, side, carry) {
+    const n = p.nodes.length;
+    const nm = nodeMap(p), A0 = nm.get(w.a), B0 = nm.get(w.b);
+    const T = axisTarget(p, w, nm), L = len(sub(B0, A0));
+    if (T == null || L < 1e-9 || Math.abs(T - L) < 1e-6) return 0;
+    const idx = new Map(p.nodes.map((nd, i) => [nd.id, i]));
+    const old = p.nodes.map((nd) => ({ x: nd.x, y: nd.y }));
+    const pilNode = p.pillars.map((pl) => old.findIndex((o) => Math.hypot(o.x - pl.x, o.y - pl.y) < 1e-4));
+    const ia = idx.get(w.a), ib = idx.get(w.b);
+    const movers = side === 'A' ? [ia] : side === 'AB' ? [ia, ib] : [ib];
+    const free = new Set(); // paredes que podem girar
+    if (!carry) for (const o of p.walls) {
+      if (o === w || o.kind === 'verif' || o.len != null) continue;
+      if (movers.some((k) => o.a === p.nodes[k].id || o.b === p.nodes[k].id)) free.add(o.id);
+    }
+    const N2 = 2 * n;
+    const M = Array.from({ length: N2 }, () => new Array(N2).fill(0)), r = new Array(N2).fill(0);
+    const row = (ents, res, wt) => { for (const [i, ci] of ents) { r[i] += wt * ci * res; for (const [j, cj] of ents) M[i][j] += wt * ci * cj; } };
+    for (const o of p.walls) {
+      if (o.kind === 'verif') continue;
+      const a = idx.get(o.a), b = idx.get(o.b); if (a === undefined || b === undefined) continue;
+      const d = unit(sub(old[b], old[a]));
+      if (!free.has(o.id)) row([[2 * a, d.y], [2 * a + 1, -d.x], [2 * b, -d.y], [2 * b + 1, d.x]], 0, 100); // mantém a direção
+      if (o === w) row([[2 * a, -d.x], [2 * a + 1, -d.y], [2 * b, d.x], [2 * b + 1, d.y]], T, 1e4);       // nova medida
+      else if (o.len != null) {                                                                         // medidas já informadas
+        const To = axisTarget(p, o, nm);
+        if (free.has(o.id)) continue;
+        row([[2 * a, -d.x], [2 * a + 1, -d.y], [2 * b, d.x], [2 * b + 1, d.y]], To, 100);
+      }
+    }
+    // ponto(s) que não se movem
+    const fix = (k, wt) => { row([[2 * k, 1]], old[k].x, wt); row([[2 * k + 1, 1]], old[k].y, wt); };
+    if (side === 'A') fix(ib, 1e6); else if (side === 'AB') { const mx = (old[ia].x + old[ib].x) / 2, my = (old[ia].y + old[ib].y) / 2; row([[2 * ia, 0.5], [2 * ib, 0.5]], mx, 1e6); row([[2 * ia + 1, 0.5], [2 * ib + 1, 0.5]], my, 1e6); }
+    else fix(ia, 1e6);
+    for (let i = 0; i < n; i++) fix(i, 1e-3); // o resto fica onde está, a menos que precise acompanhar
+    const X = solveLinear(M, r);
+    p.nodes.forEach((nd, i) => { nd.x = X[2 * i]; nd.y = X[2 * i + 1]; });
+    // aberturas continuam no mesmo lugar quando o lado A se move
+    const u0 = unit(sub(old[ib], old[ia]));
+    const shiftA = dot(sub(old[ia], p.nodes[ia]), u0);
+    if (Math.abs(shiftA) > 1e-6) for (const o of w.ops || []) o.d += shiftA;
+    // pilares, textos e cortes acompanham
+    const Tf = affineFit(old, p.nodes);
+    const mv = (o) => { const x = Tf[0] * o.x + Tf[1] * o.y + Tf[2], y = Tf[3] * o.x + Tf[4] * o.y + Tf[5]; o.x = x; o.y = y; };
+    p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } });
+    p.labels.forEach(mv);
+    return T - L;
+  }
+  /* comprimento atual da parede medido pela mesma referência da medida (face interna, eixo ou externa) */
+  function faceLength(p, w) {
+    const nm = nodeMap(p), A = nm.get(w.a), B = nm.get(w.b);
+    return len(sub(B, A)) - refShift(p, w, w.a, nm) - refShift(p, w, w.b, nm);
+  }
+  /* ---------- edição ---------- */
+  function splitWall(p, w, P) {
+    const nm = nodeMap(p);
+    const A = nm.get(w.a), B = nm.get(w.b);
+    const u = unit(sub(B, A)), Lw = len(sub(B, A));
+    const s = Math.max(0.05, Math.min(Lw - 0.05, dot(sub(P, A), u)));
+    const N = { id: uid('n'), x: A.x + u.x * s, y: A.y + u.y * s };
+    p.nodes.push(N);
+    keepTotal(p, w);
+    const w2 = { ...w, id: uid('w'), a: N.id, b: w.b, len: null, ops: [] };
+    const keep = [];
+    for (const o of w.ops || []) { if (o.d < s) keep.push(o); else w2.ops.push({ ...o, d: o.d - s }); }
+    w.ops = keep; w.b = N.id; w.len = null;
+    p.walls.splice(p.walls.indexOf(w) + 1, 0, w2);
+    return N;
+  }
+  function removeOrphans(p) {
+    const used = new Set();
+    for (const w of p.walls) { used.add(w.a); used.add(w.b); }
+    p.nodes = p.nodes.filter((n) => used.has(n.id));
+  }
+
+  return { OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+})();
+
+
+</script>
+<script>
+{
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const C = Core;
+const KEY = 'croqui_campo_v1';
+
+/* ---------- armazenamento: aparelho + nuvem (quando disponível) ---------- */
+let mem = {};
+const readLocal = () => { try { mem = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { mem = mem || {}; } };
+const writeLocal = () => { try { localStorage.setItem(KEY, JSON.stringify(mem)); return true; } catch (e) { return false; } };
+const caps = {};
+/* ---------- versão independente: recursos do próprio celular ---------- */
+const KEYK = 'croqui_api_key';
+const getKey = () => { try { return localStorage.getItem(KEYK) || ''; } catch (e) { return ''; } };
+const setKey = (k) => { try { k ? localStorage.setItem(KEYK, k) : localStorage.removeItem(KEYK); return true; } catch (e) { return false; } };
+async function toJpegB64(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
+  return await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(',')[1]); fr.readAsDataURL(blob); });
+}
+const standaloneSample = {
+  limits: async () => ({ maxPromptBytes: 262144, images: { maxCount: 1, maxInputBytes: 40e6, mediaTypes: ['image/jpeg', 'image/png', 'image/webp'] } }),
+  json: async (prompt, opts = {}) => {
+    const key = getKey(); if (!key) throw { code: 'no_key' };
+    const img = opts.images && opts.images[0];
+    let b64; try { b64 = await toJpegB64(img); } catch (e) { throw { code: 'image_rejected' }; }
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal: opts.signal,
+        headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 8000, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: prompt }] }] })
+      });
+    } catch (e) { if (e && e.name === 'AbortError') throw { code: 'cancelled' }; throw { code: 'offline' }; }
+    if (res.status === 401 || res.status === 403) throw { code: 'bad_key' };
+    if (res.status === 429 || res.status === 529) throw { code: 'rate_limited' };
+    if (!res.ok) throw { code: 'upstream_error' };
+    const j = await res.json();
+    const text = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+    const a = text.indexOf('{'), b = text.lastIndexOf('}');
+    if (a < 0 || b <= a) throw { code: 'invalid_json' };
+    try { return JSON.parse(text.slice(a, b + 1)); } catch (e) { throw { code: 'invalid_json' }; }
+  }
+};
+function keySheet() {
+  const has = !!getKey();
+  openSheet(`<h2>Chave da API (leitura por foto)</h2>
+    <p>A leitura do croqui por foto usa o Claude pela API da Anthropic, cobrada por uso na sua conta da API. Crie a chave em console.anthropic.com (menu API Keys) e cole aqui. Ela fica guardada só neste celular.</p>
+    <div class="f"><label for="iKey">Chave</label><input id="iKey" type="password" autocomplete="off" placeholder="${has ? 'Chave cadastrada (cole outra para trocar)' : 'sk-ant-...'}"></div>
+    <div class="acts">${has ? '<button class="pill danger" data-del>Apagar chave</button>' : ''}<button class="pill" data-x>Fechar</button><button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    sh.querySelector('[data-x]').onclick = closeSheet;
+    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { setKey(''); closeSheet(); toast('Chave apagada deste celular.'); };
+    sh.querySelector('[data-ok]').onclick = () => { const k = sh.querySelector('#iKey').value.trim(); if (!k) { closeSheet(); return; } if (setKey(k)) toast('Chave salva neste celular.'); else toast('Não foi possível salvar a chave.'); closeSheet(); };
+  });
+}
+const dms = (v, pos, neg) => { const s = v >= 0 ? pos : neg; v = Math.abs(v); const d = Math.floor(v), m = Math.floor((v - d) * 60), sec = ((v - d) * 60 - m) * 60; return `${d}°${String(m).padStart(2, '0')}'${sec.toFixed(1).padStart(4, '0')}"${s}`; };
+const cap = (name) => Promise.resolve(name === 'sample' ? standaloneSample : null);
+let cloud = null; // {col}
+let cloudState = 'local';
+const pendingCloud = new Map(); let cloudBusy = false;
+async function initCloud() {
+  try {
+    const [db, user] = await Promise.all([cap('db'), cap('user')]);
+    if (!db || !user) return;
+    const id = await user.id();
+    if (!id) return;
+    const col = db.collection('data/users/' + id);
+    const snap = await col.get();
+    let changed = false;
+    for (const d of snap.docs) {
+      const b = d.data(); if (!b || !b.p) continue;
+      if (b.deleted) { if (mem[d.id]) { delete mem[d.id]; changed = true; } continue; }
+      let rp; try { rp = C.normalize(JSON.parse(b.p)); } catch (e) { continue; }
+      if (!mem[d.id] || (rp.updatedAt || 0) > (mem[d.id].updatedAt || 0)) { mem[d.id] = rp; changed = true; }
+    }
+    cloud = { col };
+    cloudState = 'nuvem';
+    const remote = new Map(snap.docs.map((d) => [d.id, d.data()]));
+    for (const id2 in mem) { const r = remote.get(id2); if (!r || (r.updatedAt || 0) < (mem[id2].updatedAt || 0)) queueCloud(id2); }
+    if (changed) { writeLocal(); if (!P) renderHome(); }
+    if (!P) renderHome();
+  } catch (e) { cloud = null; }
+}
+function queueCloud(id) { if (!cloud) return; pendingCloud.set(id, true); clearTimeout(queueCloud.t); queueCloud.t = setTimeout(flushCloud, 1800); }
+async function flushCloud() {
+  if (!cloud || cloudBusy) return;
+  cloudBusy = true;
+  try {
+    for (const id of [...pendingCloud.keys()]) {
+      pendingCloud.delete(id);
+      const p = mem[id];
+      try {
+        if (p) await cloud.col.doc(id).set({ p: JSON.stringify(p), name: p.name, updatedAt: p.updatedAt });
+        else await cloud.col.doc(id).set({ p: '{}', deleted: true, updatedAt: Date.now() });
+      } catch (e) {
+        if (e && e.code === 'unavailable') { pendingCloud.set(id, true); }
+        else if (e && (e.code === 'quota_exceeded')) toast('Espaço na nuvem esgotado: o levantamento ficou salvo só neste aparelho.');
+      }
+    }
+  } finally { cloudBusy = false; if (pendingCloud.size) setTimeout(flushCloud, 4000); }
+}
+function persist() {
+  if (!P) return;
+  P.updatedAt = Date.now();
+  mem[P.id] = P;
+  clearTimeout(persist.t);
+  persist.t = setTimeout(() => { if (!writeLocal() && !cloud) toast('Não foi possível salvar neste aparelho. Faça um backup (.json).'); queueCloud(P.id); }, 350);
+}
+
+/* ---------- estado ---------- */
+let P = null;
+let mode = 'parede';
+let sel = null;            // {type:'wall'|'pillar'|'label', id}
+let measureRun = false;    // modo "Medir em sequência"
+const view = { s: 45, ox: 0, oy: 0 };
+let undoS = [], redoS = [];
+const snapshot = () => JSON.stringify({ nodes: P.nodes, walls: P.walls, pillars: P.pillars, labels: P.labels });
+function pushUndo() { undoS.push(snapshot()); if (undoS.length > 80) undoS.shift(); redoS = []; updTop(); }
+function restore(s) { const o = JSON.parse(s); Object.assign(P, o); sel = null; }
+function undo() { if (!undoS.length) return; redoS.push(snapshot()); restore(undoS.pop()); changed(); }
+function redo() { if (!redoS.length) return; undoS.push(snapshot()); restore(redoS.pop()); changed(); }
+function changed() { persist(); render(); updStatus(); updTop(); }
+
+const cv = $('#cv'), ctx = cv.getContext('2d');
+const toW = (sx, sy) => ({ x: (sx - view.ox) / view.s, y: (view.oy - sy) / view.s });
+const toS = (P2) => ({ x: view.ox + P2.x * view.s, y: view.oy - P2.y * view.s });
+
+/* ---------- mensagens ---------- */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3200); }
+
+/* ---------- folha inferior ---------- */
+let sheetClose = null;
+function openSheet(html, bind, onClose) {
+  const sh = $('#sheet');
+  $('#fbar').hidden = true;
+  sh.innerHTML = '<div class="grab"></div>' + html;
+  sh.hidden = false; $('#scrim').hidden = false;
+  sheetClose = onClose || null;
+  bind && bind(sh);
+  sh.scrollTop = 0;
+}
+function closeSheet() {
+  $('#sheet').hidden = true; $('#scrim').hidden = true; $('#sheet').innerHTML = '';
+  const f = sheetClose; sheetClose = null; f && f();
+}
+$('#scrim').addEventListener('click', closeSheet);
+function confirmSheet(title, text, okLabel, onOk) {
+  openSheet(`<h2>${esc(title)}</h2><p>${esc(text)}</p><div class="acts"><button class="pill" data-x>Cancelar</button><button class="pill pri" data-ok>${esc(okLabel)}</button></div>`, (sh) => {
+    sh.querySelector('[data-x]').onclick = closeSheet;
+    sh.querySelector('[data-ok]').onclick = () => { closeSheet(); onOk(); };
+  });
+}
+const segHTML = (name, opts, val) => `<div class="seg" data-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(v) === String(val)}">${l}</button>`).join('')}</div>`;
+function bindSegs(root) {
+  root.querySelectorAll('.seg').forEach((sg) => sg.querySelectorAll('button').forEach((b) => b.onclick = () => {
+    sg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', 'false')); b.setAttribute('aria-pressed', 'true');
+  }));
+}
+const segVal = (root, name) => { const b = root.querySelector(`[data-seg="${name}"] [aria-pressed=true]`); return b ? b.dataset.v : null; };
+const numVal = (root, sel2) => C.parseNum(root.querySelector(sel2).value);
+
+/* ---------- LISTA ---------- */
+function renderHome() {
+  const list = Object.values(mem).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const el = $('#cards');
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">Nenhum levantamento ainda. Toque em <b>Novo levantamento</b>, desenhe as paredes com o dedo e depois informe as medidas da trena.</div>`;
+    return;
+  }
+  el.innerHTML = list.map((p) => {
+    const n = C.paredes(p).length, m = C.paredes(p).filter((w) => w.len != null).length;
+    const d = new Date(p.updatedAt || p.createdAt);
+    return `<div class="card"><canvas class="thumb" data-th="${esc(p.id)}" width="128" height="104"></canvas>
+      <button class="main" data-open="${esc(p.id)}"><span class="nm">${esc(p.name)}</span>
+      <span class="meta">${d.toLocaleDateString('pt-BR')} · ${n} paredes · ${m} medidas</span></button>
+      <button class="iconbtn" data-opt="${esc(p.id)}" aria-label="Opções"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/></svg></button></div>`;
+  }).join('');
+  el.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => openProject(b.dataset.open));
+  el.querySelectorAll('[data-opt]').forEach((b) => b.onclick = () => projectMenu(b.dataset.opt));
+  el.querySelectorAll('[data-th]').forEach((c) => drawThumb(c, mem[c.dataset.th]));
+}
+function drawThumb(c, p) {
+  C.normalize(p);
+  const g = c.getContext('2d'), geo = C.geometry(p, { cotas: false, cortes: false }), bb = C.bbox(p, geo);
+  g.clearRect(0, 0, c.width, c.height);
+  if (!bb) return;
+  const s = Math.min((c.width - 16) / Math.max(bb.x1 - bb.x0, 0.5), (c.height - 16) / Math.max(bb.y1 - bb.y0, 0.5));
+  const ox = (c.width - (bb.x1 - bb.x0) * s) / 2 - bb.x0 * s, oy = (c.height + (bb.y1 - bb.y0) * s) / 2 + bb.y0 * s;
+  g.strokeStyle = getComputedStyle(document.body).color; g.lineWidth = 1.2;
+  for (const q of geo.prims) if (q.type === 'line' && q.layer === 'PAREDES') { g.beginPath(); g.moveTo(ox + q.a.x * s, oy - q.a.y * s); g.lineTo(ox + q.b.x * s, oy - q.b.y * s); g.stroke(); }
+}
+function projectMenu(id) {
+  const p = mem[id];
+  openSheet(`<h2>${esc(p.name)}</h2><div class="menu">
+    <button data-a="open">Abrir</button>
+    <button data-a="dup">Duplicar</button>
+    <button data-a="bak">Salvar backup (.json)<small>Para guardar ou levar a outro aparelho</small></button>
+    <button data-a="del" class="danger" style="color:var(--red)">Excluir</button></div>`, (sh) => {
+    sh.querySelector('[data-a=open]').onclick = () => { closeSheet(); openProject(id); };
+    sh.querySelector('[data-a=dup]').onclick = () => {
+      const c2 = JSON.parse(JSON.stringify(p)); c2.id = C.uid('L'); c2.name = p.name + ' (cópia)'; c2.createdAt = c2.updatedAt = Date.now();
+      mem[c2.id] = c2; writeLocal(); queueCloud(c2.id); closeSheet(); renderHome();
+    };
+    sh.querySelector('[data-a=bak]').onclick = () => { closeSheet(); saveFile(slug(p.name) + '.json', JSON.stringify(p, null, 1)); };
+    sh.querySelector('[data-a=del]').onclick = () => confirmSheet('Excluir levantamento?', `"${p.name}" será apagado deste aparelho e da nuvem.`, 'Excluir', () => {
+      delete mem[id]; writeLocal(); queueCloud(id); renderHome();
+    });
+  });
+}
+$('#bNew').onclick = () => {
+  const p = C.newProject('Levantamento ' + (Object.keys(mem).length + 1));
+  mem[p.id] = p; writeLocal();
+  openProject(p.id, true);
+  infoSheet(true);
+};
+$('#bImport').onclick = () => $('#fImport').click();
+$('#fImport').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const p = JSON.parse(await f.text());
+    if (!p || !Array.isArray(p.nodes) || !Array.isArray(p.walls)) throw 0;
+    C.normalize(p);
+    if (mem[p.id]) p.id = C.uid('L');
+    p.updatedAt = Date.now(); mem[p.id] = p; writeLocal(); queueCloud(p.id); renderHome(); toast('Backup importado.');
+  } catch (err) { toast('Arquivo inválido: escolha um backup .json deste aplicativo.'); }
+};
+
+/* ---------- EDITOR ---------- */
+function openProject(id, fresh) {
+  P = mem[id]; if (!P) return; C.normalize(P);
+  undoS = []; redoS = []; sel = null; measureRun = false;
+  $('#home').hidden = true; $('#editor').hidden = false;
+  setMode(P.nodes.length ? 'editar' : 'parede');
+  resize();
+  fit();
+  updStatus(); updTop();
+}
+function backHome() { closeSheet(); if (P) { persist(); writeLocal(); } P = null; $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
+$('#bBack').onclick = backHome;
+$('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
+$('#bTitle').onclick = () => infoSheet();
+$('#bMore').onclick = moreMenu;
+$('#bAdjust').onclick = doAdjust;
+$('#bMeasure').onclick = () => { measureRun = true; nextUnmeasured(); };
+$('#tools').querySelectorAll('button').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
+
+const HINTS = {
+  parede: 'Desenhe à mão livre: um traço reto vira uma parede; contornando o ambiente sem tirar o dedo, cada lado vira uma parede. Dois dedos movem e dão zoom.',
+  editar: 'Toque numa parede para informar a medida, aberturas e espessura. Arraste os pontos para corrigir o croqui.',
+  pilar: 'Toque onde fica o pilar (no canto ele encaixa e alinha com a parede). Toque num pilar para selecionar; toque de novo para girar 90°.',
+  texto: 'Toque para escrever o nome do ambiente ou uma observação.',
+  diag: 'Arraste entre dois cantos para lançar uma diagonal ou cota total de verificação.',
+  corte: 'Arraste atravessando a planta onde quer o corte. O desenho do corte aparece abaixo da planta.'
+};
+function setMode(m) {
+  mode = m;
+  $('#tools').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+  $('#hint').textContent = HINTS[m];
+  $('#hint').hidden = false;
+  clearTimeout(setMode.t); setMode.t = setTimeout(() => { $('#hint').hidden = true; }, 6000);
+  render();
+}
+function updTop() {
+  if (!P) return;
+  $('#bTitle').textContent = P.name;
+  $('#bUndo').disabled = !undoS.length; $('#bRedo').disabled = !redoS.length;
+}
+function updStatus() {
+  if (!P) return;
+  const ws = C.paredes(P), m = ws.filter((w) => w.len != null).length, f = ws.length - m;
+  const rp = m ? C.report(P) : null;
+  const clo = rp ? (rp.issues.length ? ` · <span class="warn">medida não bate</span>` : (f ? '' : ` · <span class="okt">medidas conferem</span>`)) : '';
+  $('#stat').innerHTML = ws.length ? `<b>${ws.length}</b> paredes · <b>${m}</b> medidas${f ? ` · <span class="warn">${f} sem medida</span>` : ''}${clo}` : 'Comece desenhando as paredes';
+  $('#bMeasure').disabled = !f;
+}
+
+/* ---------- desenho na tela ---------- */
+let dpr = 1, W = 0, H = 0, colors = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n) => cs.getPropertyValue(n).trim();
+  const probe = document.createElement('span'); document.body.appendChild(probe);
+  const res = (n) => { probe.style.color = `var(${n})`; return getComputedStyle(probe).color; };
+  colors = { paper: res('--paper'), ink: res('--ink'), muted: res('--muted'), grid: res('--grid'), grid2: res('--grid2'), wall: res('--wall'), accent: res('--accent'), red: res('--red'), orange: res('--orange'), cyan: res('--cyan'), mag: res('--mag'), ok: res('--ok') };
+  probe.remove(); v;
+}
+const layerColor = (l) => ({ PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink }[l] || colors.ink);
+function resize() {
+  const r = $('#stage').getBoundingClientRect();
+  dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  render();
+}
+new ResizeObserver(() => { if (P) resize(); }).observe($('#stage'));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); render(); });
+new MutationObserver(() => { readColors(); render(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+function fitAll() { fit(true); }
+function fit(all) {
+  if (!P) return;
+  view0 = null;
+  const geo = C.geometry(P, { cortes: !!all }), bb = C.bbox(P, geo);
+  if (!bb || !W) { view.s = 45; view.ox = W / 2; view.oy = H / 2; render(); return; }
+  const pad = 36, bw = Math.max(bb.x1 - bb.x0, 1), bh = Math.max(bb.y1 - bb.y0, 1);
+  view.s = Math.max(8, Math.min(400, Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh)));
+  view.ox = W / 2 - (bb.x0 + bb.x1) / 2 * view.s;
+  view.oy = H / 2 + (bb.y0 + bb.y1) / 2 * view.s;
+  render();
+}
+
+let drawing = null; // {start:{pt,nodeId,wallId}, end, guides}
+let rafPending = false;
+function render() { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; paint(); }); }
+function paint() {
+  if (!P || !W) return;
+  const g = ctx; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = colors.paper; g.fillRect(0, 0, W, H);
+  // quadrícula de 1 m (5 m quando afastado)
+  const step = view.s < 14 ? 5 : 1;
+  const w0 = toW(0, H), w1 = toW(W, 0);
+  g.lineWidth = 1;
+  for (let x = Math.floor(w0.x / step) * step; x <= w1.x; x += step) { const sx = Math.round(view.ox + x * view.s) + .5; g.strokeStyle = (Math.round(x) % 5 === 0) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(sx, 0); g.lineTo(sx, H); g.stroke(); }
+  for (let y = Math.floor(w0.y / step) * step; y <= w1.y; y += step) { const sy = Math.round(view.oy - y * view.s) + .5; g.strokeStyle = (Math.round(y) % 5 === 0) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(0, sy); g.lineTo(W, sy); g.stroke(); }
+  const geo = C.geometry(P);
+  const poly = (pts) => { g.beginPath(); pts.forEach((p2, i) => { const s = toS(p2); i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y); }); g.closePath(); };
+  g.fillStyle = colors.wall;
+  for (const q of geo.quads) { poly(q.pts); g.fill(); }
+  g.fillStyle = colors.paper;
+  for (const h of geo.holes) { poly(h.pts); g.fill(); }
+  if (sel && sel.type === 'wall') { const q = geo.quads.find((x) => x.wall === sel.id); if (q) { g.fillStyle = colors.accent; g.globalAlpha = .28; poly(q.pts); g.fill(); g.globalAlpha = 1; } }
+  for (const q of geo.prims) {
+    const col = layerColor(q.layer);
+    if (q.type === 'line') {
+      const a = toS(q.a), b = toS(q.b);
+      g.strokeStyle = col; g.lineWidth = q.layer === 'PAREDES' ? 1.6 : 1;
+      if (q.layer === 'VERIFICACAO') g.setLineDash([6, 4]);
+      if (q.layer === 'CORTES') { g.setLineDash([12, 4, 3, 4]); g.lineWidth = sel && sel.type === 'cut' ? 2.5 : 1.4; }
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]);
+    } else if (q.type === 'arc') {
+      const c = toS(q.c); g.strokeStyle = col; g.lineWidth = 1;
+      g.beginPath(); g.arc(c.x, c.y, q.r * view.s, -q.a0 * Math.PI / 180, -q.a1 * Math.PI / 180, true); g.stroke();
+    } else if (q.type === 'solid') {
+      g.fillStyle = col; poly(q.pts); g.fill();
+    } else if (q.type === 'text') {
+      const px = Math.max(10, Math.min(36, q.h * view.s * (q.layer === 'TEXTOS' ? 1 : 1.15)));
+      if (q.h * view.s < 3.5 && q.layer !== 'TEXTOS') continue;
+      const s = toS(q); g.save(); g.translate(s.x, s.y); g.rotate(-q.rot * Math.PI / 180);
+      g.fillStyle = col; g.font = `${q.layer === 'TEXTOS' ? 600 : 500} ${px}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(q.text, 0, 0); g.restore();
+    }
+  }
+  // números das paredes
+  const nm = C.nodeMap(P);
+  g.font = '600 11px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  C.paredes(P).forEach((w, i) => {
+    const A = nm.get(w.a), B = nm.get(w.b); if (!A || !B) return;
+    const m = toS({ x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 });
+    const isSel = sel && sel.type === 'wall' && sel.id === w.id;
+    g.fillStyle = isSel ? colors.accent : (w.len == null ? colors.orange : colors.paper);
+    g.beginPath(); g.arc(m.x, m.y, 9, 0, 7); g.fill();
+    g.strokeStyle = isSel ? colors.accent : (w.len == null ? colors.orange : colors.muted); g.lineWidth = 1; g.stroke();
+    g.fillStyle = (isSel || w.len == null) ? '#fff' : colors.ink; g.fillText(String(i + 1), m.x, m.y + .5);
+  });
+  // pontos
+  if (mode !== 'texto') {
+    for (const n of P.nodes) { const s = toS(n); g.fillStyle = colors.ink; g.beginPath(); g.arc(s.x, s.y, mode === 'editar' ? 4.5 : 3, 0, 7); g.fill(); }
+  }
+  // A / B da parede selecionada
+  if (sel && sel.type === 'wall') {
+    const w = P.walls.find((x) => x.id === sel.id);
+    if (w) for (const [k, l] of [[w.a, 'A'], [w.b, 'B']]) {
+      const s = toS(nm.get(k)); g.fillStyle = colors.accent; g.beginPath(); g.arc(s.x, s.y, 11, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.font = '700 12px system-ui,sans-serif'; g.fillText(l, s.x, s.y + .5);
+    }
+  }
+  if (sel && (sel.type === 'pillar' || sel.type === 'label')) {
+    const o = (sel.type === 'pillar' ? P.pillars : P.labels).find((x) => x.id === sel.id);
+    if (o) { const s = toS(o); g.strokeStyle = colors.accent; g.lineWidth = 2; g.beginPath(); g.arc(s.x, s.y, Math.max(18, Math.max(o.bw || 0, o.bh || 0) * view.s * 0.75), 0, 7); g.stroke(); }
+  }
+  // traço em andamento
+  if (drawing && drawing.path.length > 2 && mode === 'parede') {
+    const poly = strokePoly(drawing.path);
+    if (poly.length > 2) {
+      g.strokeStyle = colors.muted; g.lineWidth = 1.5; g.globalAlpha = .6;
+      g.beginPath(); drawing.path.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)); g.stroke(); g.globalAlpha = 1;
+      g.strokeStyle = colors.accent; g.lineWidth = 3; g.setLineDash([8, 5]);
+      g.beginPath(); poly.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)); g.stroke(); g.setLineDash([]);
+      for (const q of poly) { g.fillStyle = colors.accent; g.beginPath(); g.arc(q.x, q.y, 5, 0, 7); g.fill(); }
+    }
+  }
+  if (drawing) {
+    const a = toS(drawing.start.pt), b = toS(drawing.end.pt);
+    const free = mode === 'parede' && drawing.path.length > 2 && strokePoly(drawing.path).length > 2;
+    if (!free) {
+      g.strokeStyle = colors.accent; g.lineWidth = 3; g.setLineDash(mode === 'diag' ? [8, 6] : mode === 'corte' ? [12, 4, 3, 4] : []);
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]);
+    }
+    for (const s of [a, b]) { g.fillStyle = colors.accent; g.beginPath(); g.arc(s.x, s.y, 6, 0, 7); g.fill(); }
+    if (drawing.end.nodeId) { g.strokeStyle = colors.accent; g.lineWidth = 2; g.beginPath(); g.arc(b.x, b.y, 14, 0, 7); g.stroke(); }
+    g.strokeStyle = colors.accent; g.lineWidth = 1; g.setLineDash([3, 4]);
+    for (const gd of drawing.end.guides || []) { const s = toS(gd); g.beginPath(); g.moveTo(s.x, s.y); g.lineTo(b.x, b.y); g.stroke(); }
+    g.setLineDash([]);
+  }
+  if (drawing || (drag && drag.moved)) drawLoupe();
+  placeFbar();
+}
+
+
+/* lupa: ampliação do ponto sob o dedo, no canto oposto da tela */
+function drawLoupe() {
+  const g = ctx;
+  let f, len = null;
+  if (drawing) {
+    const last = drawing.path && drawing.path.length ? drawing.path[drawing.path.length - 1] : null;
+    const free = mode === 'parede' && drawing.path.length > 2 && strokePoly(drawing.path).length > 2;
+    f = free && last ? last : toS(drawing.end.pt);
+    if (!free && C.paredes(P).some((w) => w.len != null)) len = Math.hypot(drawing.end.pt.x - drawing.start.pt.x, drawing.end.pt.y - drawing.start.pt.y);
+  } else f = toS(drag.o);
+  const r = 70, z = 2.5, src = (2 * r) / z;
+  const left = f.x > W / 2;
+  const cx = left ? r + 12 : W - r - 12;
+  const cy = f.y < 2 * r + 60 ? H - r - 12 : r + 12;
+  g.save();
+  g.beginPath(); g.arc(cx, cy, r, 0, 7); g.closePath();
+  g.fillStyle = colors.paper; g.fill(); g.clip();
+  g.imageSmoothingEnabled = true;
+  g.drawImage(cv, (f.x - src / 2) * dpr, (f.y - src / 2) * dpr, src * dpr, src * dpr, cx - r, cy - r, 2 * r, 2 * r);
+  g.restore();
+  g.strokeStyle = colors.accent; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
+  g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx - 12, cy); g.lineTo(cx - 4, cy); g.moveTo(cx + 4, cy); g.lineTo(cx + 12, cy); g.moveTo(cx, cy - 12); g.lineTo(cx, cy - 4); g.moveTo(cx, cy + 4); g.lineTo(cx, cy + 12); g.stroke();
+  if (drawing && drawing.end && drawing.end.nodeId) { g.strokeStyle = colors.accent; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, 16, 0, 7); g.stroke(); }
+  if (len != null) {
+    const t = '≈ ' + C.fmt(len) + ' m';
+    g.font = '700 14px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = g.measureText(t).width + 16;
+    g.fillStyle = colors.accent; g.beginPath(); g.roundRect ? g.roundRect(cx - tw / 2, cy + r - 30, tw, 24, 12) : g.rect(cx - tw / 2, cy + r - 30, tw, 24); g.fill();
+    g.fillStyle = '#fff'; g.fillText(t, cx, cy + r - 18);
+  }
+}
+/* ---------- encaixes ---------- */
+function nearestNode(w, tol, exclude) {
+  let best = null, bd = tol;
+  for (const n of P.nodes) { if (n.id === exclude) continue; const d = Math.hypot(n.x - w.x, n.y - w.y); if (d < bd) { bd = d; best = n; } }
+  return best;
+}
+function segDist(P2, A, B) {
+  const ab = C.sub(B, A), t = Math.max(0, Math.min(1, C.dot(C.sub(P2, A), ab) / Math.max(C.dot(ab, ab), 1e-12)));
+  const Q = C.add(A, C.mul(ab, t)); return { d: Math.hypot(P2.x - Q.x, P2.y - Q.y), t, Q };
+}
+function nearestWall(w, tol, kinds = 'parede') {
+  const nm = C.nodeMap(P); let best = null, bd = Infinity;
+  for (const x of P.walls) {
+    if (kinds === 'parede' && x.kind === 'verif') continue;
+    const A = nm.get(x.a), B = nm.get(x.b); if (!A || !B) continue;
+    const r = segDist(w, A, B);
+    const lim = x.kind === 'verif' ? tol : Math.max(tol, x.t / 2 + tol * 0.5);
+    if (r.d < lim && r.d < bd) { bd = r.d; best = { wall: x, ...r }; }
+  }
+  return best;
+}
+function snap(sx, sy, from) {
+  let w = toW(sx, sy);
+  const tolN = 24 / view.s;
+  const n = nearestNode(w, tolN, from && from.nodeId);
+  if (n) return { pt: { x: n.x, y: n.y }, nodeId: n.id };
+  const guides = [];
+  let lockH = false, lockV = false;
+  if (from) {
+    const dx = w.x - from.pt.x, dy = w.y - from.pt.y, tan = Math.tan(10 * Math.PI / 180);
+    if (Math.abs(dy) <= tan * Math.abs(dx)) { w.y = from.pt.y; lockH = true; }
+    else if (Math.abs(dx) <= tan * Math.abs(dy)) { w.x = from.pt.x; lockV = true; }
+  }
+  const tolA = 12 / view.s;
+  let bx = null, by = null;
+  for (const m of P.nodes) {
+    if (from && m.id === from.nodeId) continue;
+    if (!lockV && Math.abs(m.x - w.x) < tolA && (!bx || Math.abs(m.x - w.x) < Math.abs(bx.x - w.x))) bx = m;
+    if (!lockH && Math.abs(m.y - w.y) < tolA && (!by || Math.abs(m.y - w.y) < Math.abs(by.y - w.y))) by = m;
+  }
+  if (bx) { w.x = bx.x; guides.push(bx); }
+  if (by) { w.y = by.y; guides.push(by); }
+  const nw = nearestWall(w, 16 / view.s);
+  if (nw && nw.t > 0.02 && nw.t < 0.98) {
+    const nm = C.nodeMap(P), A = nm.get(nw.wall.a), B = nm.get(nw.wall.b);
+    let Q = nw.Q;
+    if (from && (lockH || lockV)) { // mantém a direção travada ao encostar numa parede
+      const d = lockH ? { x: 1, y: 0 } : { x: 0, y: 1 }, e = C.sub(B, A), c = C.cross(d, e);
+      if (Math.abs(c) > 1e-9) { const s = C.cross(C.sub(A, from.pt), e) / c; const X = C.add(from.pt, C.mul(d, s)); const r = segDist(X, A, B); if (r.d < 1e-6 && r.t > 0.02 && r.t < 0.98) Q = X; }
+    }
+    return { pt: Q, wallId: nw.wall.id, guides };
+  }
+  return { pt: w, guides };
+}
+function resolveNode(sn) {
+  if (sn.nodeId) return P.nodes.find((n) => n.id === sn.nodeId);
+  if (sn.wallId) {
+    const nw = nearestWall(sn.pt, 0.05);
+    if (nw && nw.t > 0.001 && nw.t < 0.999) {
+      if (nw.wall.len != null) toast(`A parede ${C.wallNumber(P, nw.wall)} foi dividida; a medida dela virou uma cota "Total" para conferência.`);
+      return C.splitWall(P, nw.wall, nw.Q);
+    }
+  }
+  const n = { id: C.uid('n'), x: sn.pt.x, y: sn.pt.y }; P.nodes.push(n); return n;
+}
+
+/* ---------- toque ---------- */
+const ptrs = new Map();
+let pinch = null, drag = null, panning = null, tapInfo = null;
+const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+const hitPillar = (w) => P.pillars.find((pl) => Math.hypot(pl.x - w.x, pl.y - w.y) < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s));
+const hitLabel = (w) => P.labels.find((lb) => Math.abs(lb.x - w.x) < Math.max(24 / view.s, (lb.text.length * (lb.h || .2) * .32)) && Math.abs(lb.y - w.y) < Math.max(16 / view.s, (lb.h || .2)));
+const hitCut = (w) => { let best = null, bd = 16 / view.s; for (const c of P.cuts) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
+
+/* simplificação do traço à mão livre (Ramer-Douglas-Peucker) e limpeza das quinas */
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const a = pts[0], b = pts[pts.length - 1];
+  let idx = -1, dm = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = segDist(pts[i], a, b).d; if (d > dm) { dm = d; idx = i; } }
+  if (dm <= eps) return [a, b];
+  return rdp(pts.slice(0, idx + 1), eps).slice(0, -1).concat(rdp(pts.slice(idx), eps));
+}
+function cleanPoly(pts) {
+  let q = pts.slice();
+  const L2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  for (let pass = 0; pass < 4; pass++) {
+    let ch = false;
+    // quinas arredondadas: segmento curto entre dois longos vira a interseção deles
+    for (let i = 1; i + 2 < q.length; i++) {
+      if (L2(q[i], q[i + 1]) < 30) {
+        const X = lineInter(q[i - 1], q[i], q[i + 1], q[i + 2]);
+        const m = { x: (q[i].x + q[i + 1].x) / 2, y: (q[i].y + q[i + 1].y) / 2 };
+        if (X && L2(X, m) < 70) q.splice(i, 2, X); else q.splice(i + 1, 1);
+        ch = true; break;
+      }
+    }
+    if (q.length > 2 && L2(q[0], q[1]) < 22) { q.splice(1, 1); ch = true; }
+    if (q.length > 2 && L2(q[q.length - 1], q[q.length - 2]) < 22) { q.splice(q.length - 2, 1); ch = true; }
+    // trechos quase alinhados viram um só
+    for (let i = 1; i + 1 < q.length; i++) {
+      const u = C.unit(C.sub(q[i], q[i - 1])), v = C.unit(C.sub(q[i + 1], q[i]));
+      if (Math.abs(C.cross(u, v)) < 0.26 && C.dot(u, v) > 0) { q.splice(i, 1); ch = true; break; }
+    }
+    if (!ch) break;
+  }
+  return q;
+}
+function lineInter(a, b, c, d) {
+  const r = C.sub(b, a), s = C.sub(d, c), den = C.cross(r, s);
+  if (Math.abs(den) < 1e-9) return null;
+  const t = C.cross(C.sub(c, a), s) / den;
+  return C.add(a, C.mul(r, t));
+}
+function strokePoly(path) {
+  if (path.length < 2) return path;
+  return cleanPoly(rdp(path, 14));
+}
+
+cv.addEventListener('pointerdown', (e) => {
+  cv.setPointerCapture(e.pointerId);
+  const p = pos(e); ptrs.set(e.pointerId, p);
+  $('#hint').hidden = true;
+  if (ptrs.size === 2) {
+    drawing = null; drag = null; tapInfo = null; panning = null;
+    const [a, b] = [...ptrs.values()];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: view.s, w: toW(mid.x, mid.y) };
+    render(); return;
+  }
+  if (ptrs.size > 2) return;
+  tapInfo = { x: p.x, y: p.y, t: Date.now() };
+  const w = toW(p.x, p.y);
+  if (mode === 'parede' || mode === 'diag' || mode === 'corte') {
+    if (mode === 'corte') { drawing = { start: { pt: w }, end: { pt: w }, path: [p] }; render(); return; }
+    const st = snap(p.x, p.y, null);
+    if (mode === 'diag' && !st.nodeId) { drawing = null; panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy }; return; }
+    drawing = { start: st, end: st, path: [p] }; render();
+  } else if (mode === 'editar' || mode === 'pilar') {
+    const n = mode === 'editar' ? nearestNode(w, 22 / view.s) : null;
+    const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null;
+    if (hp) drag = { type: 'pillar', o: hp, moved: false };
+    else if (n) drag = { type: 'node', o: n, moved: false };
+    else if (hl) drag = { type: 'label', o: hl, moved: false };
+    else panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy };
+  } else {
+    panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy };
+  }
+});
+cv.addEventListener('pointermove', (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = pos(e); ptrs.set(e.pointerId, p);
+  if (pinch && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    view.s = Math.max(5, Math.min(600, pinch.s0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0));
+    view.ox = mid.x - pinch.w.x * view.s; view.oy = mid.y + pinch.w.y * view.s;
+    render(); return;
+  }
+  const moved = tapInfo && Math.hypot(p.x - tapInfo.x, p.y - tapInfo.y) > 8;
+  if (drawing) {
+    const last = drawing.path[drawing.path.length - 1];
+    if (Math.hypot(p.x - last.x, p.y - last.y) > 2) drawing.path.push(p);
+    if (mode === 'corte') { drawing.end = { pt: orthoFrom(drawing.start.pt, toW(p.x, p.y)) }; }
+    else drawing.end = snap(p.x, p.y, drawing.start);
+    render(); return;
+  }
+  if (drag) {
+    if (!drag.moved && !moved) return;
+    if (!drag.moved) { pushUndo(); drag.moved = true; }
+    if (drag.type === 'node') {
+      const sn = snap(p.x, p.y, { pt: drag.o, nodeId: drag.o.id });
+      const w = sn.nodeId ? toW(p.x, p.y) : sn.pt;
+      drag.o.x = w.x; drag.o.y = w.y;
+    } else { const w = toW(p.x, p.y); drag.o.x = w.x; drag.o.y = w.y; if (drag.type === 'pillar') { const n = nearestNode(w, 16 / view.s); if (n) { drag.o.x = n.x; drag.o.y = n.y; } } }
+    render(); return;
+  }
+  if (panning && (moved || panning.on)) { panning.on = true; view.ox = panning.ox + p.x - panning.x; view.oy = panning.oy + p.y - panning.y; render(); }
+});
+function orthoFrom(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, tan = Math.tan(10 * Math.PI / 180);
+  if (Math.abs(dy) <= tan * Math.abs(dx)) return { x: b.x, y: a.y };
+  if (Math.abs(dx) <= tan * Math.abs(dy)) return { x: a.x, y: b.y };
+  return b;
+}
+function addWall(na, nb) {
+  if (!na || !nb || na === nb) return null;
+  if (P.walls.some((w) => w.kind !== 'verif' && ((w.a === na.id && w.b === nb.id) || (w.a === nb.id && w.b === na.id)))) return null;
+  const w = { id: C.uid('w'), a: na.id, b: nb.id, t: P.settings.t, len: null, ref: P.settings.ref, ori: 'L', kind: 'parede', ops: [] };
+  P.walls.push(w); return w;
+}
+function commitStroke(d) {
+  const poly = strokePoly(d.path);
+  pushUndo();
+  if (poly.length <= 2) {
+    const na = resolveNode(d.start), nb = resolveNode(d.end);
+    if (!addWall(na, nb)) { C.removeOrphans(P); undoS.pop(); }
+    changed(); return;
+  }
+  // traço à mão livre com várias quinas: cada trecho vira uma parede
+  const first = poly[0], lastP = poly[poly.length - 1];
+  const closed = Math.hypot(first.x - lastP.x, first.y - lastP.y) < 34;
+  const snaps = [d.start];
+  for (let i = 1; i < poly.length; i++) {
+    if (closed && i === poly.length - 1) { snaps.push('close'); break; }
+    snaps.push(snap(poly[i].x, poly[i].y, snaps[i - 1]));
+  }
+  if (closed && snaps.length > 2) { // o último trecho fecha no 1º ponto: endireita na horizontal/vertical
+    const lastS = snaps[snaps.length - 2], f0 = snaps[0].pt;
+    if (lastS !== 'close' && !lastS.nodeId && !lastS.wallId) {
+      const dx = f0.x - lastS.pt.x, dy = f0.y - lastS.pt.y, tan = Math.tan(10 * Math.PI / 180);
+      if (Math.abs(dx) <= tan * Math.abs(dy)) lastS.pt = { x: f0.x, y: lastS.pt.y };
+      else if (Math.abs(dy) <= tan * Math.abs(dx)) lastS.pt = { x: lastS.pt.x, y: f0.y };
+    }
+  }
+  const nodes = [];
+  let made = 0;
+  for (let i = 0; i < snaps.length; i++) {
+    const n = snaps[i] === 'close' ? nodes[0] : resolveNode(snaps[i]);
+    nodes.push(n);
+    if (i > 0 && addWall(nodes[i - 1], n)) made++;
+  }
+  if (!made) { C.removeOrphans(P); undoS.pop(); }
+  else toast(`${made} parede${made > 1 ? 's' : ''} criada${made > 1 ? 's' : ''}${closed ? ' (ambiente fechado)' : ''}.`);
+  changed();
+}
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  const p = ptrs.get(e.pointerId); ptrs.delete(e.pointerId);
+  if (pinch) { if (ptrs.size < 2) { pinch = null; tapInfo = null; panning = null; } return; }
+  const wasTap = tapInfo && Math.hypot(p.x - tapInfo.x, p.y - tapInfo.y) <= 8 && Date.now() - tapInfo.t < 600;
+  tapInfo = null;
+  if (drawing) {
+    const d = drawing; drawing = null;
+    const a = toS(d.start.pt), b = toS(d.end.pt);
+    let span = 0; for (const q of d.path) span = Math.max(span, Math.hypot(q.x - d.path[0].x, q.y - d.path[0].y));
+    if (span < 18 || e.type === 'pointercancel') {
+      if (wasTap && (mode === 'parede' || mode === 'corte')) tapSelect(p);
+      render(); return;
+    }
+    if (mode === 'corte') {
+      if (Math.hypot(a.x - b.x, a.y - b.y) < 30) { render(); return; }
+      pushUndo();
+      const used = new Set(P.cuts.map((c) => c.name));
+      let nm = 'A'; for (let k = 0; k < 26; k++) { const l = String.fromCharCode(65 + k); if (!used.has(l)) { nm = l; break; } }
+      const cut = { id: C.uid('c'), name: nm, a: d.start.pt, b: d.end.pt, flip: false };
+      P.cuts.push(cut); changed(); fitAll(); cutSheet(cut, true); return;
+    }
+    if (mode === 'diag') {
+      if (!d.end.nodeId || d.end.nodeId === d.start.nodeId) { toast('A diagonal precisa ligar dois cantos já desenhados.'); render(); return; }
+      pushUndo();
+      const w = { id: C.uid('w'), a: d.start.nodeId, b: d.end.nodeId, t: 0, len: null, ref: 'interna', ori: 'L', kind: 'verif', use: false, ops: [] };
+      P.walls.push(w); changed(); sel = { type: 'wall', id: w.id }; verifSheet(w); return;
+    }
+    sel = null;
+    commitStroke(d); return;
+  }
+  if (drag) {
+    const dg = drag; drag = null;
+    if (dg.moved) {
+      if (dg.type === 'node') mergeNode(dg.o);
+      if (dg.type === 'pillar') sel = { type: 'pillar', id: dg.o.id };
+      changed(); return;
+    }
+    if (dg.type === 'pillar') {
+      if (sel && sel.type === 'pillar' && sel.id === dg.o.id) rotatePillar(dg.o, 90);
+      else { sel = { type: 'pillar', id: dg.o.id }; render(); }
+      return;
+    }
+    if (dg.type === 'label') { sel = { type: 'label', id: dg.o.id }; render(); labelSheet(dg.o); return; }
+    if (dg.type === 'node') { tapSelect(p); return; }
+  }
+  if (panning) {
+    const pn = panning; panning = null;
+    if (pn.on) return;
+    if (!wasTap) return;
+    if (mode === 'editar' || mode === 'diag') tapSelect(p);
+    else if (mode === 'pilar') { if (sel && sel.type === 'pillar') { sel = null; render(); } else placePillar(p); }
+    else if (mode === 'texto') { const w = toW(p.x, p.y); labelSheet({ id: null, x: w.x, y: w.y, text: '', h: 0.2 }); }
+  }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('wheel', (e) => {
+  e.preventDefault(); const p = pos(e), w = toW(p.x, p.y);
+  view.s = Math.max(5, Math.min(600, view.s * Math.exp(-e.deltaY * 0.0015)));
+  view.ox = p.x - w.x * view.s; view.oy = p.y + w.y * view.s; render();
+}, { passive: false });
+
+function mergeNode(n) {
+  const o = nearestNode(n, 10 / view.s, n.id); if (!o) return;
+  for (const w of P.walls) { if (w.a === n.id) w.a = o.id; if (w.b === n.id) w.b = o.id; }
+  P.walls = P.walls.filter((w) => w.a !== w.b);
+  const seen = new Set(); P.walls = P.walls.filter((w) => { const k = [w.a, w.b].sort().join('|') + w.kind; if (seen.has(k)) return false; seen.add(k); return true; });
+  C.removeOrphans(P);
+}
+function tapSelect(p) {
+  const w = toW(p.x, p.y);
+  const hp = hitPillar(w); if (hp) { sel = { type: 'pillar', id: hp.id }; render(); return; }
+  const hc = hitCut(w); if (hc) { sel = { type: 'cut', id: hc.id }; render(); cutSheet(hc); return; }
+  const nw = nearestWall(w, 18 / view.s, 'all');
+  if (nw) { sel = { type: 'wall', id: nw.wall.id }; render(); nw.wall.kind === 'verif' ? verifSheet(nw.wall) : wallSheet(nw.wall); centerOn(nw.wall, true); }
+  else { sel = null; render(); }
+}
+function rotatePillar(pl, deg) { pushUndo(); pl.rot = (((pl.rot || 0) + deg) % 360 + 360) % 360; changed(); }
+function placePillar(p) {
+  const w = toW(p.x, p.y), n = nearestNode(w, 24 / view.s);
+  let rot = 0;
+  if (n) { // alinha o lado maior do pilar com a parede mais longa que chega no ponto
+    const nm = C.nodeMap(P); let best = null, bl = 0;
+    for (const x of C.paredes(P)) if (x.a === n.id || x.b === n.id) { const A = nm.get(x.a), B = nm.get(x.b), l = Math.hypot(B.x - A.x, B.y - A.y); if (l > bl) { bl = l; best = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI; } }
+    if (best !== null) rot = ((Math.round(best) + 90) % 180 + 180) % 180;
+  }
+  const pl = { id: C.uid('p'), x: n ? n.x : w.x, y: n ? n.y : w.y, bw: P.settings.pw || 0.15, bh: P.settings.ph || 0.30, rot, name: 'P' + (P.pillars.length + 1) };
+  pushUndo(); P.pillars.push(pl); sel = { type: 'pillar', id: pl.id }; changed();
+}
+/* barra flutuante do pilar selecionado */
+const fbar = $('#fbar');
+function placeFbar() {
+  const pl = sel && sel.type === 'pillar' && P.pillars.find((x) => x.id === sel.id);
+  if (!pl || !$('#sheet').hidden) { fbar.hidden = true; return; }
+  fbar.hidden = false;
+  const s = toS(pl), r = fbar.getBoundingClientRect();
+  const x = Math.min(Math.max(8, s.x - r.width / 2), W - r.width - 8);
+  let y = s.y - 34 - r.height - Math.max(pl.bw, pl.bh) * view.s / 2;
+  if (y < 8) y = s.y + 34 + Math.max(pl.bw, pl.bh) * view.s / 2;
+  fbar.style.left = x + 'px'; fbar.style.top = y + 'px';
+}
+fbar.querySelector('[data-f=rot]').onclick = () => { const pl = P.pillars.find((x) => sel && x.id === sel.id); if (pl) rotatePillar(pl, 90); };
+fbar.querySelector('[data-f=rot15]').onclick = () => { const pl = P.pillars.find((x) => sel && x.id === sel.id); if (pl) rotatePillar(pl, 15); };
+fbar.querySelector('[data-f=ed]').onclick = () => { const pl = P.pillars.find((x) => sel && x.id === sel.id); if (pl) pillarSheet(pl); };
+fbar.querySelector('[data-f=del]').onclick = () => { const pl = P.pillars.find((x) => sel && x.id === sel.id); if (pl) { pushUndo(); P.pillars = P.pillars.filter((x) => x !== pl); sel = null; changed(); } };
+
+/* ---------- folhas de propriedades ---------- */
+const refOpts = [['interna', 'Face interna'], ['eixo', 'Eixo'], ['externa', 'Face externa']];
+let lastSide = 'B', lastCarry = '1';
+function wallSheet(w) {
+  const num = C.wallNumber(P, w);
+  const nm = C.nodeMap(P), A = nm.get(w.a), B = nm.get(w.b);
+  const axisL = Math.hypot(B.x - A.x, B.y - A.y);
+  const tA = C.adjT(P, w, w.a, nm), tB = C.adjT(P, w, w.b, nm);
+  const faceFor = (ref) => axisL - (ref === 'interna' ? 1 : ref === 'externa' ? -1 : 0) * (tA + tB) / 2;
+  const opsTxt = (w.ops || []).map((o, i) => `<div><span>${o.type === 'P' ? 'Porta' : o.type === 'J' ? 'Janela' : 'Vão'}${o.type !== 'V' ? ' ' + opModelName(o).toLowerCase() : ''} ${C.fmt(o.w)} m · a ${C.fmt(o.d)} m de A${o.label ? ' · ' + esc(o.label) : ''}</span><button class="iconbtn" data-eo="${i}" aria-label="Editar abertura"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`).join('');
+  const remaining = C.paredes(P).filter((x) => x.len == null && x !== w).length;
+  const isFirst = () => !C.paredes(P).some((x) => x.len != null && x !== w);
+  openSheet(`<h2>Parede ${num}</h2>
+    <div class="f"><label for="iLen">Medida da trena (m) — de A até B</label><input id="iLen" class="big" inputmode="decimal" autocomplete="off" placeholder="ex.: 3,45" value="${w.len != null ? C.fmt(w.len) : ''}"></div>
+    <div class="f"><span class="lab">A medida foi tomada pela</span>${segHTML('ref', refOpts, w.ref)}</div>
+    <div id="dBox" class="dbox" hidden>
+      <p id="dTxt"></p>
+      <div class="f" id="dSide"><span class="lab">A diferença vai para</span>${segHTML('side', [['A', '◀ Lado A'], ['AB', 'Dividir'], ['B', 'Lado B ▶']], lastSide)}</div>
+      <div class="f" id="dCarry"><span class="lab">Paredes ligadas à ponta que se move</span>${segHTML('carry', [['1', 'Andam junto (mantém ângulos)'], ['0', 'Giram']], lastCarry)}</div>
+    </div>
+    <div class="row"><div class="f"><label for="iT">Espessura (cm)</label><input id="iT" inputmode="decimal" value="${C.fmt(w.t * 100, 0)}"></div>
+    <div class="f"><label for="iHw">Altura (m)</label><input id="iHw" inputmode="decimal" placeholder="PD ${C.fmt(P.settings.pd)}" value="${w.h ? C.fmt(w.h) : ''}"></div></div>
+    <span class="lab">Portas e janelas nesta parede</span>
+    ${opsTxt ? `<div class="list">${opsTxt}</div>` : '<p>Nenhuma.</p>'}
+    <div class="acts" style="margin-bottom:14px"><button class="pill" data-op="P">+ Porta</button><button class="pill" data-op="J">+ Janela</button><button class="pill" data-op="V">+ Vão</button></div>
+    <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill" data-flip>Inverter A/B</button>
+    ${measureRun && remaining ? '<button class="pill pri" data-next>Salvar e próxima</button>' : '<button class="pill pri" data-ok>Salvar</button>'}</div>`, (sh) => {
+    bindSegs(sh);
+    const inp = sh.querySelector('#iLen');
+    if (w.len == null) setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    // mostra a diferença para o desenho e pergunta para que lado ela vai
+    const upd = () => {
+      const L = numVal(sh, '#iLen'), box = sh.querySelector('#dBox');
+      if (L == null || L <= 0) { box.hidden = true; return; }
+      if (isFirst()) {
+        box.hidden = false; sh.querySelector('#dSide').hidden = true; sh.querySelector('#dCarry').hidden = true;
+        sh.querySelector('#dTxt').innerHTML = 'Primeira medida: ela dá a <b>escala</b> ao croqui inteiro, sem deformar o desenho.';
+        return;
+      }
+      const d = L - faceFor(segVal(sh, 'ref'));
+      if (Math.abs(d) < 0.005) { box.hidden = true; return; }
+      box.hidden = false; sh.querySelector('#dSide').hidden = false; sh.querySelector('#dCarry').hidden = false;
+      sh.querySelector('#dTxt').innerHTML = `O desenho tem ${C.fmt(faceFor(segVal(sh, 'ref')))} m: a parede vai <b>${d > 0 ? 'crescer' : 'encolher'} ${C.fmt(Math.abs(d))} m</b>. O resto do desenho fica travado.`;
+    };
+    inp.addEventListener('input', upd);
+    sh.querySelectorAll('[data-seg=ref] button').forEach((b) => b.addEventListener('click', () => setTimeout(upd, 0)));
+    upd();
+    const save = () => {
+      const L = numVal(sh, '#iLen'), t = numVal(sh, '#iT');
+      if (sh.querySelector('#iLen').value.trim() && (L == null || L <= 0)) { toast('Medida inválida.'); return false; }
+      if (t == null || t <= 0 || t > 100) { toast('Espessura inválida.'); return false; }
+      const hw = numVal(sh, '#iHw');
+      const before = JSON.stringify([w.len, w.t, w.ref, w.h || null]);
+      const after = JSON.stringify([L, t / 100, segVal(sh, 'ref'), hw && hw > 0 ? hw : null]);
+      if (before === after) return true;
+      pushUndo();
+      const first = L != null && isFirst();
+      w.len = L; w.t = t / 100; w.ref = segVal(sh, 'ref'); w.h = hw && hw > 0 ? hw : null;
+      P.settings.ref = w.ref;
+      if (L != null) {
+        if (first) C.scaleTo(P, w);
+        else {
+          lastSide = segVal(sh, 'side') || lastSide; lastCarry = segVal(sh, 'carry') || lastCarry;
+          C.applyLength(P, w, lastSide, lastCarry === '1');
+        }
+      }
+      changed(); return true;
+    };
+    const goNext = () => { closeSheet(); measureRun = true; nextUnmeasured(); };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (save()) { if (measureRun && remaining) goNext(); else closeSheet(); } } });
+    const ok = sh.querySelector('[data-ok]'); if (ok) ok.onclick = () => { if (save()) closeSheet(); };
+    const nx = sh.querySelector('[data-next]'); if (nx) nx.onclick = () => { if (save()) goNext(); };
+    sh.querySelector('[data-del]').onclick = () => { pushUndo(); P.walls = P.walls.filter((x) => x !== w); C.removeOrphans(P); sel = null; closeSheet(); changed(); };
+    sh.querySelector('[data-flip]').onclick = () => { if (!save()) return; const run = measureRun; const span = C.len(C.sub(nm.get(w.b), nm.get(w.a))) - C.refShift(P, w, w.a) - C.refShift(P, w, w.b); [w.a, w.b] = [w.b, w.a]; for (const o of w.ops || []) { o.d = Math.max(0, span - o.d - o.w); o.hinge = o.hinge ? 0 : 1; } changed(); sheetClose = null; measureRun = run; sel = { type: 'wall', id: w.id }; wallSheet(w); };
+    sh.querySelectorAll('[data-op]').forEach((b) => b.onclick = () => { if (!save()) return; opSheet(w, null, b.dataset.op); });
+    sh.querySelectorAll('[data-eo]').forEach((b) => b.onclick = () => { if (!save()) return; opSheet(w, w.ops[+b.dataset.eo]); });
+  }, () => { measureRun = false; sel = null; render(); setTimeout(() => { if ($('#sheet').hidden) { restoreView(); keepVisible(); } }, 0); });
+}
+function keepVisible() {
+  const bb = C.planBox(P); if (!bb) return;
+  const a = toS({ x: bb.x0, y: bb.y1 }), b = toS({ x: bb.x1, y: bb.y0 });
+  if (a.x < 40 || a.y < 40 || b.x > W - 40 || b.y > H - 40 || (b.x - a.x) < W * 0.25 && (b.y - a.y) < H * 0.25) fit();
+}
+function nextUnmeasured() {
+  const w = C.paredes(P).find((x) => x.len == null);
+  if (!w) { measureRun = false; sel = null; render(); updStatus(); toast('Todas as paredes têm medida. Toque em Conferir.'); return; }
+  sel = { type: 'wall', id: w.id }; wallSheet(w); centerOn(w);
+}
+let view0 = null;
+function restoreView() { if (view0) { Object.assign(view, view0); view0 = null; render(); } }
+function centerOn(w, onlyIfHidden) {
+  const nm = C.nodeMap(P), A = nm.get(w.a), B = nm.get(w.b);
+  if (!A || !B) return;
+  const m = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+  const st = $('#stage').getBoundingClientRect(), sh = $('#sheet');
+  const visH = Math.max(80, (sh.hidden ? st.bottom : sh.getBoundingClientRect().top) - st.top);
+  const cur = toS(m);
+  if (onlyIfHidden && cur.y > 30 && cur.y < visH - 30 && cur.x > 20 && cur.x < W - 20) return;
+  if (!view0) view0 = { ...view };
+  view.ox = W / 2 - m.x * view.s; view.oy = visH / 2 + m.y * view.s; render();
+}
+const OP_ICONS = {
+  'P:abrir': '<path d="M2 20h5M19 20h3M7 20V8"/><path d="M7 8a12 12 0 0 1 12 12" stroke-dasharray="2 2"/>',
+  'P:abrir2': '<path d="M1 20h3M20 20h3M4 20v-8M20 20v-8"/><path d="M4 12a8 8 0 0 1 8 8M20 12a8 8 0 0 0-8 8" stroke-dasharray="2 2"/>',
+  'P:correr': '<path d="M2 14h5M17 14h5"/><rect x="11" y="9.5" width="11" height="2.5"/><path d="M8 18h6M12 16l2 2-2 2"/>',
+  'P:correr2': '<path d="M2 12h3M19 12h3"/><rect x="5" y="9" width="8" height="2.5"/><rect x="11" y="12.5" width="8" height="2.5"/>',
+  'P:pivotante': '<path d="M2 20h3M19 20h3"/><path d="M8 23V8"/><path d="M8 8a13 13 0 0 1 11 12" stroke-dasharray="2 2"/>',
+  'P:sanfonada': '<path d="M1 14h3M20 14h3"/><path d="M4 14l2.7-5 2.7 5 2.6-5 2.7 5 2.7-5 2.6 5"/>',
+  'P:enrolar': '<path d="M1 12h3M20 12h3"/><path d="M4 12h2.5M8.5 12H11M13 12h2.5M17.5 12H20M4 15.5h2.5M8.5 15.5H11M13 15.5h2.5M17.5 15.5H20"/>',
+  'J:correr': '<path d="M2 8h20M2 16h20"/><path d="M3 10.5h10M11 13.5h10"/>',
+  'J:abrir': '<path d="M2 18h20M2 21h20M2 19.5h20"/><path d="M2 18a10 10 0 0 0 10-10M22 18a10 10 0 0 1-10-10" stroke-dasharray="2 2"/>',
+  'J:maximar': '<path d="M2 17h20M2 21h20M2 19h20"/><path d="M2 19L12 7l10 12" stroke-dasharray="2 2"/>',
+  'J:basculante': '<path d="M2 17h20M2 21h20M2 19h20"/><path d="M2 19l10-7 10 7" stroke-dasharray="2 2"/>',
+  'J:pivotante': '<path d="M2 9h20M2 15h20"/><path d="M6 17L18 7"/>',
+  'J:fixa': '<path d="M2 8h20M2 16h20M2 12h20"/>',
+  'V:vao': '<path d="M1 12h6M17 12h6M7 7v10M17 7v10"/>'
+};
+const opModelName = (o) => { const m = (C.OP_MODELS[o.type] || []).find((x) => x[0] === C.opModel(o)); return m ? m[1] : ''; };
+function opSheet(w, o, type) {
+  const isNew = !o, run = measureRun;
+  if (!o) {
+    const m0 = C.OP_MODELS[type][0];
+    o = { id: C.uid('o'), type, model: m0[0], w: m0[2], h: m0[3], d: 0.1, hinge: 0, side: 1, label: '' };
+    if (type === 'J') o.pe = 1.10;
+  }
+  const nameT = o.type === 'P' ? 'Porta' : o.type === 'J' ? 'Janela' : 'Vão';
+  const models = C.OP_MODELS[o.type];
+  let mdl = C.opModel(o), touched = !isNew;
+  const modelsHTML = models.length > 1 ? `<span class="lab">Tipo</span><div class="models" role="radiogroup">${models.map(([k, l]) =>
+    `<button type="button" data-m="${k}" aria-pressed="${k === mdl}"><svg class="i" viewBox="0 0 24 24">${OP_ICONS[o.type + ':' + k] || ''}</svg><span>${l}</span></button>`).join('')}</div>` : '';
+  openSheet(`<h2>${isNew ? (o.type === 'V' ? 'Novo vão' : 'Nova ' + nameT.toLowerCase()) : nameT} · parede ${C.wallNumber(P, w)}</h2>
+    ${modelsHTML}
+    <div class="row"><div class="f"><label for="iW">Largura (m)</label><input id="iW" inputmode="decimal" value="${C.fmt(o.w)}"></div>
+    <div class="f"><label for="iD">Distância do canto A (m)</label><input id="iD" inputmode="decimal" value="${C.fmt(o.d)}"></div></div>
+    <div class="row"><div class="f"><label for="iOh">Altura (m)</label><input id="iOh" inputmode="decimal" value="${C.fmt(o.h != null ? o.h : (o.type === 'J' ? 1.0 : 2.1))}"></div>
+    ${o.type === 'J' ? `<div class="f"><label for="iPe">Peitoril (m)</label><input id="iPe" inputmode="decimal" value="${C.fmt(o.pe != null ? o.pe : 1.1)}"></div>` : '<div></div>'}</div>
+    <div class="row">
+      <div class="f" id="fHinge"><span class="lab" id="lHinge">Lado da folha</span>${segHTML('hinge', [[0, 'Lado A'], [1, 'Lado B']], o.hinge || 0)}</div>
+      <div class="f" id="fSide"><span class="lab">Abre para</span>${segHTML('side', [[1, 'Um lado'], [-1, 'Outro']], o.side === -1 ? -1 : 1)}</div>
+    </div>
+    <div class="f"><label for="iLb">Identificação (opcional)</label><input id="iLb" placeholder="${o.type === 'J' ? 'ex.: J1 1,20x1,00/1,10' : o.type === 'P' ? 'ex.: P1 0,80x2,10' : 'ex.: vão 1,00 x 2,10'}" value="${esc(o.label)}"></div>
+    <p>A distância é medida pela mesma face usada na medida da parede. Use "Abre para" e "Lado da folha" para virar o símbolo.</p>
+    <div class="acts">${isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    bindSegs(sh);
+    const vis = () => {
+      const P1 = o.type === 'P', J1 = o.type === 'J';
+      sh.querySelector('#fHinge').hidden = !(P1 && ['abrir', 'correr', 'pivotante'].includes(mdl));
+      sh.querySelector('#lHinge').textContent = mdl === 'correr' ? 'Corre para' : mdl === 'pivotante' ? 'Eixo perto de' : 'Dobradiça';
+      sh.querySelector('#fSide').hidden = !((P1 && mdl !== 'correr2') || (J1 && ['abrir', 'maximar', 'basculante', 'pivotante'].includes(mdl)));
+    };
+    vis();
+    ['#iW', '#iOh', '#iPe'].forEach((q) => { const el = sh.querySelector(q); if (el) el.addEventListener('input', () => { touched = true; }); });
+    sh.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
+      mdl = b.dataset.m;
+      sh.querySelectorAll('[data-m]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      if (!touched) { // sugere medidas usuais do tipo escolhido
+        const m = models.find((x) => x[0] === mdl);
+        sh.querySelector('#iW').value = C.fmt(m[2]); sh.querySelector('#iOh').value = C.fmt(m[3]);
+        const pe = sh.querySelector('#iPe'); if (pe) pe.value = C.fmt(['maximar', 'basculante'].includes(mdl) ? 1.50 : 1.10);
+      }
+      vis();
+    });
+    const back = () => { closeSheet(); measureRun = run; sel = { type: 'wall', id: w.id }; render(); wallSheet(w); };
+    const x = sh.querySelector('[data-x]'); if (x) x.onclick = back;
+    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); w.ops = w.ops.filter((q) => q !== o); changed(); back(); };
+    sh.querySelector('[data-ok]').onclick = () => {
+      const wd = numVal(sh, '#iW'), d = numVal(sh, '#iD');
+      if (!wd || wd <= 0 || d == null || d < 0) { toast('Confira largura e distância.'); return; }
+      pushUndo();
+      o.model = mdl; o.w = wd; o.d = d; o.label = sh.querySelector('#iLb').value.trim();
+      const oh = numVal(sh, '#iOh'); if (oh && oh > 0) o.h = oh;
+      const pe = sh.querySelector('#iPe') ? numVal(sh, '#iPe') : null; if (pe != null && pe >= 0) o.pe = pe;
+      o.hinge = +segVal(sh, 'hinge') || 0; o.side = +segVal(sh, 'side') || 1;
+      w.ops = w.ops || []; if (isNew) w.ops.push(o);
+      if (w.ops.some((q) => q !== o && o.d < q.d + q.w && q.d < o.d + o.w)) toast('Atenção: esta abertura se sobrepõe a outra na mesma parede. Confira a distância do canto A.');
+      changed(); back();
+    };
+  });
+}
+function verifSheet(w) {
+  const nm = C.nodeMap(P), [va, vb] = C.verifEnds(P, w, nm, C.geometry(P, { cotas: false }).corners), L = C.len(C.sub(vb, va));
+  const idx = P.walls.filter((x) => x.kind === 'verif').indexOf(w) + 1;
+  openSheet(`<h2>Diagonal / cota de verificação D${idx}</h2>
+    <div class="f"><label for="iLen">Medida da trena (m)</label><input id="iLen" class="big" inputmode="decimal" value="${w.len != null ? C.fmt(w.len) : ''}" placeholder="ex.: 5,02"></div>
+    <p>No desenho atual: ${C.fmt(L)} m${w.len != null ? ` · diferença ${C.fmt((L - w.len) * 100, 0)} cm` : ''}.</p>
+    <div class="f"><span class="lab">Medida tomada entre</span>${segHTML('ref', [['interna', 'Cantos internos'], ['eixo', 'Eixos / pontos']], w.ref === 'interna' ? 'interna' : 'eixo')}</div>
+    <p>A diagonal serve para conferir o esquadro: a diferença entre a medida e o desenho aparece aqui e em Conferir. Se não bater, arraste os cantos no modo Editar.</p>
+    <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    bindSegs(sh);
+    setTimeout(() => { try { if (w.len == null) sh.querySelector('#iLen').focus(); } catch (e) {} }, 60);
+    sh.querySelector('[data-del]').onclick = () => { pushUndo(); P.walls = P.walls.filter((x) => x !== w); sel = null; closeSheet(); changed(); };
+    sh.querySelector('[data-ok]').onclick = () => { const v = numVal(sh, '#iLen'); pushUndo(); w.len = v && v > 0 ? v : null; w.use = false; w.ref = segVal(sh, 'ref'); closeSheet(); changed(); };
+  }, () => { sel = null; render(); setTimeout(() => { if ($('#sheet').hidden) restoreView(); }, 0); });
+}
+function pillarSheet(pl) {
+  openSheet(`<h2>Pilar ${esc(pl.name || '')}</h2>
+    <div class="row"><div class="f"><label for="iB">Largura (cm)</label><input id="iB" inputmode="decimal" value="${C.fmt(pl.bw * 100, 0)}"></div>
+    <div class="f"><label for="iH">Comprimento (cm)</label><input id="iH" inputmode="decimal" value="${C.fmt(pl.bh * 100, 0)}"></div></div>
+    <div class="row"><div class="f"><label for="iN">Nome</label><input id="iN" value="${esc(pl.name || '')}"></div>
+    <div class="f"><label for="iR">Ângulo (°)</label><input id="iR" inputmode="decimal" value="${C.fmt(pl.rot || 0, 0)}"></div></div>
+    <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    sh.querySelector('[data-del]').onclick = () => { pushUndo(); P.pillars = P.pillars.filter((x) => x !== pl); sel = null; closeSheet(); changed(); };
+    sh.querySelector('[data-ok]').onclick = () => {
+      const b = numVal(sh, '#iB'), h = numVal(sh, '#iH'), r = numVal(sh, '#iR');
+      if (!b || !h || b <= 0 || h <= 0) { toast('Confira as dimensões.'); return; }
+      pushUndo();
+      pl.bw = b / 100; pl.bh = h / 100; pl.rot = (((r || 0) % 360) + 360) % 360; pl.name = sh.querySelector('#iN').value.trim();
+      P.settings.pw = pl.bw; P.settings.ph = pl.bh;
+      closeSheet(); changed();
+    };
+  });
+}
+function heightsHTML() {
+  const st = P.settings, rf = st.roof;
+  return `<div class="row"><div class="f"><label for="iPd">Pé-direito (m)</label><input id="iPd" inputmode="decimal" value="${C.fmt(st.pd)}"></div>
+    <div class="f" data-only="laje"><label for="iLt">Espessura da laje (cm)</label><input id="iLt" inputmode="decimal" value="${C.fmt((st.lajeT || 0.1) * 100, 0)}"></div></div>
+    <div class="f"><span class="lab">Cobertura</span>${segHTML('top', [['laje', 'Laje'], ['telhado', 'Telhado'], ['forro', 'Forro'], ['nada', 'Nada']], st.top)}</div>
+    <div data-only="telhado">
+      <div class="row"><div class="f"><span class="lab">Águas</span>${segHTML('aguas', [[1, '1 água'], [2, '2 águas']], rf.aguas)}</div>
+      <div class="f"><label for="iRi">Inclinação (%)</label><input id="iRi" inputmode="decimal" value="${C.fmt((rf.i || 0) * 100, 0)}"></div></div>
+      <div class="f" data-ag="2"><span class="lab">Cumeeira na planta</span>${segHTML('cum', [['H', 'Horizontal'], ['V', 'Vertical']], rf.cum)}</div>
+      <div class="f" data-ag="1"><span class="lab">A água cai para (na planta)</span>${segHTML('queda', [['baixo', 'Baixo'], ['cima', 'Cima'], ['esquerda', 'Esq.'], ['direita', 'Dir.']], rf.queda)}</div>
+      <div class="row"><div class="f"><label for="iBe">Beiral (m)</label><input id="iBe" inputmode="decimal" value="${C.fmt(rf.beiral || 0)}"></div>
+      <div class="f"><span class="lab">Forro sob o telhado</span>${segHTML('forro', [['1', 'Sim'], ['0', 'Não']], rf.forro ? '1' : '0')}</div></div>
+      <div class="f"><label for="iTe">Telha</label><input id="iTe" value="${esc(rf.telha || '')}" placeholder="ex.: Telha cerâmica, fibrocimento, metálica"></div>
+    </div>`;
+}
+function bindHeights(sh) {
+  const upd = () => {
+    const top = segVal(sh, 'top'), ag = segVal(sh, 'aguas');
+    sh.querySelectorAll('[data-only]').forEach((el) => { el.hidden = el.dataset.only !== top; });
+    sh.querySelectorAll('[data-ag]').forEach((el) => { el.hidden = el.dataset.ag !== ag; });
+  };
+  sh.querySelectorAll('[data-seg=top] button, [data-seg=aguas] button').forEach((b) => b.addEventListener('click', () => setTimeout(upd, 0)));
+  upd();
+}
+function readHeights(sh) {
+  const st = P.settings, rf = st.roof;
+  const pd = numVal(sh, '#iPd'), lt = numVal(sh, '#iLt');
+  if (pd && pd > 0.5 && pd < 30) st.pd = pd;
+  if (lt && lt > 0 && lt < 100) st.lajeT = lt / 100;
+  st.top = segVal(sh, 'top') || st.top;
+  const ri = numVal(sh, '#iRi'), be = numVal(sh, '#iBe');
+  rf.aguas = +segVal(sh, 'aguas') || rf.aguas;
+  if (ri != null && ri >= 0 && ri < 300) rf.i = ri / 100;
+  if (be != null && be >= 0 && be < 5) rf.beiral = be;
+  rf.cum = segVal(sh, 'cum') || rf.cum; rf.queda = segVal(sh, 'queda') || rf.queda;
+  rf.forro = segVal(sh, 'forro') === '1';
+  const te = sh.querySelector('#iTe'); if (te) rf.telha = te.value.trim();
+}
+function cutSheet(cut, isNew) {
+  openSheet(`<h2>Corte ${esc(cut.name)}-${esc(cut.name)}</h2>
+    <p>O desenho do corte aparece abaixo da planta (e no DXF): paredes cortadas, portas e janelas com peitoril e altura, piso, cobertura e cotas.</p>
+    <div class="row"><div class="f"><label for="iCn">Nome</label><input id="iCn" maxlength="3" value="${esc(cut.name)}"></div>
+    <div class="f"><span class="lab">Vista</span><button class="pill" data-flip style="height:46px">Inverter sentido</button></div></div>
+    ${heightsHTML()}
+    <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill" data-see>Ver o corte</button><button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    bindSegs(sh); bindHeights(sh);
+    const save = () => { pushUndo(); cut.name = sh.querySelector('#iCn').value.trim().toUpperCase() || cut.name; readHeights(sh); changed(); };
+    sh.querySelector('[data-flip]').onclick = () => { pushUndo(); cut.flip = !cut.flip; changed(); toast('Sentido da vista invertido.'); };
+    sh.querySelector('[data-del]').onclick = () => { pushUndo(); P.cuts = P.cuts.filter((c) => c !== cut); sel = null; closeSheet(); changed(); };
+    sh.querySelector('[data-see]').onclick = () => { save(); sel = null; closeSheet(); fitAll(); };
+    sh.querySelector('[data-ok]').onclick = () => { save(); sel = null; closeSheet(); };
+  }, () => { sel = null; render(); });
+}
+function labelSheet(lb) {
+  const isNew = !lb.id;
+  openSheet(`<h2>${isNew ? 'Novo texto' : 'Texto'}</h2>
+    <div class="f"><label for="iTx">Texto</label><input id="iTx" value="${esc(lb.text)}" placeholder="ex.: SALA 01, BWC, COZINHA"></div>
+    <div class="f"><span class="lab">Tamanho</span>${segHTML('h', [['0.12', 'Pequeno'], ['0.2', 'Médio'], ['0.3', 'Grande']], String(lb.h || 0.2))}</div>
+    <div class="acts">${isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    bindSegs(sh);
+    setTimeout(() => { try { sh.querySelector('#iTx').focus(); } catch (e) {} }, 60);
+    const x = sh.querySelector('[data-x]'); if (x) x.onclick = closeSheet;
+    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); P.labels = P.labels.filter((q) => q.id !== lb.id); sel = null; closeSheet(); changed(); };
+    const ok = () => {
+      const t = sh.querySelector('#iTx').value.trim(); if (!t) { closeSheet(); return; }
+      pushUndo(); lb.text = t; lb.h = +segVal(sh, 'h');
+      if (isNew) { lb.id = C.uid('t'); P.labels.push(lb); }
+      closeSheet(); changed();
+    };
+    sh.querySelector('[data-ok]').onclick = ok;
+    sh.querySelector('#iTx').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
+  }, () => { sel = null; render(); });
+}
+function infoSheet(isNew) {
+  const i = P.info || (P.info = {});
+  openSheet(`<h2>Dados do levantamento</h2>
+    <div class="f"><label for="iNm">Nome</label><input id="iNm" value="${esc(P.name)}"></div>
+    <div class="f"><label for="iOb">Obra / imóvel</label><input id="iOb" value="${esc(i.obra)}" placeholder="ex.: Prédio da Secretaria de Saúde"></div>
+    <div class="f"><label for="iLo">Endereço / localização</label><input id="iLo" value="${esc(i.local)}" placeholder="Rua, número, bairro, município"></div>
+    <div class="f"><label for="iCo">Coordenadas</label><input id="iCo" value="${esc(i.coord)}" placeholder="ex.: 8°04'26&quot;S 37°15'52&quot;W"><button class="pill" type="button" data-gps style="height:42px;margin-top:6px">Usar GPS do celular</button></div>
+    <div class="row"><div class="f"><label for="iDa">Data</label><input id="iDa" type="date" value="${esc(i.data)}"></div>
+    <div class="f"><label for="iRe">Responsável</label><input id="iRe" value="${esc(i.resp)}"></div></div>
+    <div class="f"><label for="iOs">Observações</label><textarea id="iOs" rows="2">${esc(i.obs)}</textarea></div>
+    <h2 style="font-size:17px;margin-top:6px">Padrões para novas paredes</h2>
+    ${heightsHTML()}
+    <div class="row"><div class="f"><label for="iTd">Espessura (cm)</label><input id="iTd" inputmode="decimal" value="${C.fmt(P.settings.t * 100, 0)}"></div>
+    <div class="f"><span class="lab">Medir pela</span>${segHTML('ref', [['interna', 'Interna'], ['eixo', 'Eixo'], ['externa', 'Externa']], P.settings.ref)}</div></div>
+    <div class="acts">${isNew ? '<button class="pill" data-ph>Começar por foto do croqui</button>' : ''}<button class="pill pri" data-ok>${isNew ? 'Desenhar à mão' : 'Salvar'}</button></div>`, (sh) => {
+    bindSegs(sh); bindHeights(sh);
+    sh.querySelector('[data-gps]').onclick = () => {
+      if (!navigator.geolocation) { toast('GPS indisponível.'); return; }
+      toast('Buscando posição…');
+      navigator.geolocation.getCurrentPosition((g) => {
+        sh.querySelector('#iCo').value = dms(g.coords.latitude, 'N', 'S') + ' ' + dms(g.coords.longitude, 'E', 'W');
+        toast('Posição obtida (precisão ±' + Math.round(g.coords.accuracy) + ' m).');
+      }, () => toast('Não foi possível obter o GPS. Verifique a permissão de localização.'), { enableHighAccuracy: true, timeout: 20000 });
+    };
+    const ph = sh.querySelector('[data-ph]'); if (ph) ph.onclick = () => { sh.querySelector('[data-ok]').click(); photoSheet(); };
+    sh.querySelector('[data-ok]').onclick = () => {
+      P.name = sh.querySelector('#iNm').value.trim() || P.name;
+      Object.assign(i, { obra: sh.querySelector('#iOb').value.trim(), local: sh.querySelector('#iLo').value.trim(), coord: sh.querySelector('#iCo').value.trim(), data: sh.querySelector('#iDa').value, resp: sh.querySelector('#iRe').value.trim(), obs: sh.querySelector('#iOs').value.trim() });
+      const t = numVal(sh, '#iTd'); if (t && t > 0 && t < 100) P.settings.t = t / 100;
+      P.settings.ref = segVal(sh, 'ref');
+      readHeights(sh);
+      closeSheet(); changed();
+    };
+  });
+}
+function moreMenu() {
+  openSheet(`<h2>${esc(P.name)}</h2><div class="menu">
+    <button data-a="dxf"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Exportar para o AutoCAD<small>Baixa o desenho .dxf (em metros, por layers)</small></span></button>
+    <button data-a="photo"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg><span>Ler croqui de uma foto<small>Desenho feito no papel vira paredes, com as medidas escritas</small></span></button>
+    <button data-a="fit"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Enquadrar planta</span></button>
+    <button data-a="all"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="8"/><rect x="4" y="14" width="16" height="7"/></svg><span>Ver planta e cortes</span></button>
+    <button data-a="info"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Dados do levantamento<small>Obra, endereço, coordenadas, responsável, padrões</small></span></button>
+    <button data-a="bak"><svg class="i" viewBox="0 0 24 24"><path d="M6 20h12a2 2 0 002-2V8l-5-5H6a2 2 0 00-2 2v13a2 2 0 002 2z"/><path d="M14 3v5h5"/></svg><span>Salvar backup (.json)</span></button>
+    <button data-a="copy"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></svg><span>Copiar texto do DXF<small>Alternativa no computador: colar num arquivo .dxf</small></span></button>
+    <button data-a="key"><svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span>Chave da API<small>Necessária só para a leitura do croqui por foto</small></span></button>
+    <button data-a="help"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg><span>Como usar</span></button></div>
+    <p style="margin-top:10px">Os levantamentos ficam salvos neste celular. Faça backup (.json) de vez em quando.</p>`, (sh) => {
+    sh.querySelector('[data-a=dxf]').onclick = () => { closeSheet(); exportZip(); };
+    sh.querySelector('[data-a=fit]').onclick = () => { closeSheet(); fit(); };
+    sh.querySelector('[data-a=photo]').onclick = () => { closeSheet(); photoSheet(); };
+    sh.querySelector('[data-a=all]').onclick = () => { closeSheet(); fitAll(); };
+    sh.querySelector('[data-a=info]').onclick = () => { closeSheet(); infoSheet(); };
+    sh.querySelector('[data-a=bak]').onclick = () => { closeSheet(); saveFile(slug(P.name) + '.json', JSON.stringify(P, null, 1)); };
+    sh.querySelector('[data-a=copy]').onclick = async () => { try { await navigator.clipboard.writeText(C.toDXF(P)); toast('DXF copiado.'); } catch (e) { toast('Não foi possível copiar nesta tela.'); } closeSheet(); };
+    sh.querySelector('[data-a=help]').onclick = helpSheet;
+    sh.querySelector('[data-a=key]').onclick = () => { closeSheet(); keySheet(); };
+  });
+}
+function helpSheet() {
+  openSheet(`<h2>Como usar</h2><ol class="help">
+    <li><b>Começar:</b> desenhe à mão ou use "Começar por foto do croqui" (precisa da chave da API e de internet). Nos dados do levantamento, "Usar GPS do celular" preenche as coordenadas.</li>
+    <li><b>Parede:</b> desenhe à mão livre. Um traço reto vira uma parede; contornando o ambiente sem tirar o dedo, cada lado vira uma parede e as quinas são endireitadas. Encaixa na horizontal/vertical, nos pontos e nas paredes existentes (cria o "T"). A lupa no canto mostra a ponta sob o dedo e, depois da 1ª medida, o comprimento.</li>
+    <li><b>Medir:</b> percorre as paredes sem medida. A 1ª medida dá escala ao croqui inteiro. Depois, o desenho fica travado e só a parede editada muda: escolha se a diferença vai para o lado A, para o lado B ou se divide, e se as paredes ligadas andam junto (mantém ângulos) ou giram.</li>
+    <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
+    <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
+    <li><b>Texto:</b> nome dos ambientes e observações.</li>
+    <li><b>Diagonal:</b> confere o esquadro do ambiente (medida entre cantos internos × desenho).</li>
+    <li><b>Corte:</b> arraste atravessando a planta. O corte sai abaixo dela com pé-direito, laje, forro ou telhado, peitoris, alturas e cotas.</li>
+    <li><b>Conferir:</b> lista as medidas que não batem com o desenho e as diagonais.</li>
+    <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, INFO.</li></ol>
+    <p>Dois dedos: mover e zoom. Desfazer e refazer no topo. No modo Editar, arraste pontos, pilares e textos.</p>
+    <p>Croqui de Campo · versão 1.0</p>
+    <div class="acts"><button class="pill pri" data-ok>Entendi</button></div>`, (sh) => { sh.querySelector('[data-ok]').onclick = closeSheet; });
+}
+
+
+/* ---------- croqui por foto: o Claude lê o desenho do papel ---------- */
+const SKETCH_PROMPT = `Você recebe a FOTO de um croqui de levantamento de edificação feito à mão (planta baixa), por um engenheiro civil no Brasil.
+Transforme o desenho em geometria. Responda SOMENTE com um objeto JSON neste formato:
+{"walls":[{"x1":0,"y1":0,"x2":5,"y2":0,"len":5.0,"openings":[{"type":"P","pos":0.3,"w":0.8,"label":"P1"}]}],
+ "labels":[{"x":2.5,"y":2,"text":"SALA"}],
+ "pillars":[{"x":0,"y":0}],
+ "notes":"observações curtas sobre o que ficou duvidoso"}
+Regras:
+- Coordenadas em METROS, origem no canto inferior esquerdo do desenho, eixo y para CIMA (na foto, para cima da folha).
+- Cada parede é um segmento reto pelo EIXO da parede. Paredes que se encontram num canto usam EXATAMENTE as mesmas coordenadas nesse ponto. Uma parede que encosta no meio de outra (encontro em T) termina exatamente sobre a outra.
+- Corrija a imprecisão do traço à mão: paredes que parecem horizontais ou verticais devem ficar exatamente horizontais ou verticais.
+- "len": a medida escrita no croqui para aquela parede, em metros (ex.: "3,45" ou "345" cm → 3.45). Se não houver medida legível, use null e estime as coordenadas pela proporção do desenho e pelas medidas escritas nas outras paredes.
+- Use as medidas escritas para dar escala ao desenho todo.
+- "openings": portas (P), janelas (J) ou vãos (V) na parede; "pos" é a posição do CENTRO da abertura de 0 a 1, medida a partir do ponto (x1,y1); "w" a largura em metros se escrita, senão null.
+- "labels": nomes de ambientes escritos (SALA, COZINHA, BWC...). "pillars": pilares marcados.
+- Não invente paredes que não estão no desenho. Se a foto não for um croqui de planta, responda {"walls":[],"notes":"motivo"}.`;
+let photoFile = null, photoCtl = null;
+async function photoSheet() {
+  const sample = await cap('sample');
+  const lim = sample ? await sample.limits().catch(() => null) : null;
+  if (!sample || !lim || !lim.images) { toast('Leitura por foto indisponível.'); return; }
+  photoFile = null;
+  openSheet(`<h2>Ler croqui de uma foto</h2>
+    ${getKey() ? '' : '<p><b>Falta a chave da API.</b> Cadastre no menu ⋯ › Chave da API. Sem ela, desenhe à mão normalmente.</p>'}
+    <p>Fotografe o croqui feito no papel, de cima e com boa luz. As medidas escritas no desenho são lidas e usadas para dar escala. Depois, confira tudo e corrija o que precisar.</p>
+    <input type="file" id="fPh" accept="${esc(lim.images.mediaTypes.join(','))}" hidden>
+    <div class="acts" style="margin-bottom:12px"><button class="pill" data-pick>Escolher foto ou câmera</button></div>
+    <img id="phPrev" alt="Prévia do croqui" style="display:none;width:100%;max-height:260px;object-fit:contain;border:1px solid var(--line);border-radius:10px;margin-bottom:12px">
+    ${P.walls.length ? '<p><b>Atenção:</b> o que for lido será somado ao desenho atual.</p>' : ''}
+    <p id="phStat" role="status"></p>
+    <div class="acts"><button class="pill" data-x>Fechar</button><button class="pill pri" data-go disabled>Ler croqui</button></div>`, (sh) => {
+    const inp = sh.querySelector('#fPh'), go = sh.querySelector('[data-go]'), stat = sh.querySelector('#phStat');
+    sh.querySelector('[data-pick]').onclick = () => inp.click();
+    inp.onchange = () => {
+      const f = inp.files[0]; if (!f) return;
+      if (f.size > lim.images.maxInputBytes) { stat.textContent = 'Foto grande demais. Use outra.'; return; }
+      photoFile = f; go.disabled = false;
+      const im = sh.querySelector('#phPrev'); try { im.src = URL.createObjectURL(f); im.style.display = 'block'; } catch (e) {}
+    };
+    sh.querySelector('[data-x]').onclick = () => { if (photoCtl) photoCtl.abort(); closeSheet(); };
+    go.onclick = async () => {
+      if (!photoFile) return;
+      if (photoCtl) { photoCtl.abort(); return; }
+      photoCtl = new AbortController();
+      go.textContent = 'Parar'; stat.textContent = 'Lendo o croqui… pode levar até um minuto.';
+      try {
+        const data = await sample.json(SKETCH_PROMPT, { images: [photoFile], signal: photoCtl.signal, modelTier: 'complex' });
+        if (!data || !Array.isArray(data.walls) || !data.walls.length) { stat.textContent = 'Não encontrei paredes nessa foto. ' + (data && data.notes ? String(data.notes) : 'Tente outra foto, mais de perto.'); return; }
+        pushUndo();
+        const r = C.fromSketch(P, data);
+        closeSheet(); changed(); fit();
+        const f = C.paredes(P).filter((w) => w.len == null).length;
+        openSheet(`<h2>Croqui lido</h2>
+          <p>${r.total} paredes criadas${r.measured ? ` e ${r.measured} medidas lidas do papel` : ''}.${f ? ` ${f} ficaram sem medida (laranja): use <b>Medir</b>.` : ''} Onde uma parede medida foi dividida por outra, a medida virou uma cota <b>Total</b> para conferência.</p>
+          ${data.notes ? `<p><b>Observação da leitura:</b> ${esc(String(data.notes).slice(0, 400))}</p>` : ''}
+          <p>Confira se as medidas foram lidas pela face certa (interna, eixo ou externa) tocando em cada parede.</p>
+          <div class="acts"><button class="pill" data-u>Desfazer leitura</button><button class="pill pri" data-ok>OK</button></div>`, (s2) => {
+          s2.querySelector('[data-u]').onclick = () => { closeSheet(); undo(); fit(); };
+          s2.querySelector('[data-ok]').onclick = closeSheet;
+        });
+      } catch (e) {
+        const c = e && e.code;
+        stat.textContent = c === 'no_key' ? 'Cadastre a chave da API no menu ⋯ › Chave da API.' : c === 'bad_key' ? 'Chave da API inválida ou sem crédito. Confira no console da Anthropic.' : c === 'offline' ? 'Sem internet: a leitura por foto precisa de conexão.' : c === 'cancelled' ? 'Leitura interrompida.' : c === 'not_granted' ? 'O uso do Claude não foi autorizado nesta página.' : c === 'rate_limited' ? 'Muitas leituras seguidas ou limite de uso atingido. Tente mais tarde.' : c === 'image_rejected' ? 'Essa imagem não pôde ser usada. Tente outra foto.' : c === 'invalid_json' ? 'A leitura saiu incompleta. Toque em Ler croqui de novo.' : c === 'refused' ? 'A foto não pôde ser lida. Tente outra.' : 'Falha na leitura. Tente de novo.';
+      } finally { photoCtl = null; go.textContent = 'Ler croqui'; }
+    };
+  });
+}
+/* ---------- conferência ---------- */
+function doAdjust() {
+  if (!P.walls.length) { toast('Desenhe as paredes primeiro.'); return; }
+  const r = C.report(P);
+  const missing = r.total - r.measured;
+  const iss = r.issues.map((i) => `<li><button class="linkbtn" style="padding:0;min-height:0" data-w="${i.wall}">Parede ${i.num}</button>: medida ${C.fmt(i.med)} × desenho ${C.fmt(i.got)} (<span class="badc">${i.diff > 0 ? '+' : ''}${C.fmt(i.diff * 100, 0)} cm</span>)</li>`).join('');
+  const chk = r.checks.map((c) => `<li>${c.total ? 'Total' : 'D' + c.num}: ${c.med == null ? 'sem medida' : `medida ${C.fmt(c.med)} × desenho ${C.fmt(c.got)} — ${Math.abs(c.diff) <= 0.02 ? '<span class="okc">confere</span>' : `<span class="badc">${c.diff > 0 ? '+' : ''}${C.fmt(c.diff * 100, 0)} cm</span>`}`}</li>`).join('');
+  openSheet(`<h2>Conferência das medidas</h2>
+    <p>${r.measured} de ${r.total} paredes com medida.${missing ? ` ${missing} sem medida (cotas "~" em laranja).` : ''}</p>
+    <ul class="rep">${r.issues.length ? `<li><span class="badc">Medidas que não batem com o desenho</span> (toque para abrir a parede e reaplicar a medida):</li>${iss}` : '<li><span class="okc">Todas as paredes medidas batem com o desenho.</span></li>'}${chk}</ul>
+    <div class="acts"><button class="pill pri" data-ok>OK</button></div>`, (sh) => {
+    sh.querySelector('[data-ok]').onclick = closeSheet;
+    sh.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => { const w = P.walls.find((x) => x.id === b.dataset.w); closeSheet(); if (w) { sel = { type: 'wall', id: w.id }; wallSheet(w); centerOn(w); } });
+  });
+}
+
+/* ---------- exportação ---------- */
+const slug = (s) => (String(s || 'levantamento').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'levantamento').slice(0, 60);
+async function saveFile(name, data) {
+  try {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Arquivo salvo em Downloads: ' + name); return true;
+  } catch (e) { toast('Não foi possível salvar o arquivo.'); return false; }
+}
+async function exportZip() {
+  if (!P.walls.length) { toast('Nada para exportar ainda.'); return; }
+  const unmeasured = C.paredes(P).filter((w) => w.len == null).length;
+  await saveFile(slug(P.name) + '.dxf', new Blob([C.toDXF(P)], { type: 'application/dxf' }));
+  if (unmeasured) setTimeout(() => toast(`${unmeasured} parede(s) sem medida saíram com cota "~" (estimada).`), 1500);
+}
+
+/* ---------- início ---------- */
+readColors();
+readLocal();
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#bInstall').hidden = false; });
+$('#bInstall').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; $('#bInstall').hidden = true; };
+renderHome();
+initCloud();
+window.addEventListener('pagehide', () => { if (P) { P.updatedAt = Date.now(); mem[P.id] = P; writeLocal(); } });
+}
+
+</script>
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+</body>
+</html>

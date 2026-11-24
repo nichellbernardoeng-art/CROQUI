@@ -46,6 +46,7 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .top{display:flex;align-items:center;gap:2px;padding:2px 4px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
 .top .title{flex:1;text-align:left;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;min-height:44px}
 .top .iconbtn:disabled{opacity:.35}
+.top .iconbtn{width:40px}
 .stage{position:relative;flex:1;background:var(--paper);overflow:hidden}
 #cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 .hint{position:absolute;left:8px;right:8px;top:8px;font-size:13px;color:var(--muted);background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:8px;padding:6px 10px;pointer-events:none;max-width:520px}
@@ -95,6 +96,15 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
 #fbar button:active{background:var(--line)}
 #fbar .danger{color:var(--red)}
 .okt{color:var(--ok);font-weight:600}
+#bIma{position:relative;width:40px}
+#bIma[aria-pressed=true]{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+#bIma .ima-t{position:absolute;bottom:1px;left:0;right:0;font-size:9px;font-weight:700;text-align:center}
+#b3d{width:40px}
+#v3d{position:fixed;inset:0;z-index:5;background:var(--paper)}
+#cv3{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.v3bar{position:absolute;left:8px;right:8px;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.v3bar .pill{background:var(--panel);height:46px}.v3bar .pill.pri{background:var(--accent)}
+.v3hint{position:absolute;top:10px;left:0;right:0;text-align:center;font-size:13px;color:var(--muted);margin:0;pointer-events:none}
 .models{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:4px 0 14px}
 .models button{display:flex;align-items:center;gap:10px;text-align:left;min-height:52px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;line-height:1.2}
 .models button[aria-pressed=true]{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel));font-weight:600}
@@ -120,6 +130,8 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
     <button class="title" id="bTitle">Levantamento</button>
     <button class="iconbtn" id="bUndo" aria-label="Desfazer"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
     <button class="iconbtn" id="bRedo" aria-label="Refazer"><svg class="i" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+    <button class="iconbtn" id="bIma" aria-label="Ímã desligado" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0012 0V4h-4v8a2 2 0 01-4 0V4z"/><path d="M6 8h4M14 8h4"/></svg><span class="ima-t"></span></button>
+    <button class="iconbtn" id="b3d" aria-label="Vista 3D"><b style="font-size:15px;letter-spacing:.02em">3D</b></button>
     <button class="iconbtn" id="bMore" aria-label="Mais opções"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
   </header>
   <div class="stage" id="stage"><canvas id="cv"></canvas><div class="hint" id="hint"></div>
@@ -135,6 +147,11 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
   </nav>
 </section>
 
+<section id="v3d" hidden aria-label="Vista 3D">
+  <canvas id="cv3"></canvas>
+  <div class="v3bar"><button class="pill" id="v3Cover">Tirar cobertura</button><button class="pill" id="v3Reset">Recentrar</button><button class="pill pri" id="v3Close">Fechar 3D</button></div>
+  <p class="v3hint">Um dedo gira · dois dedos: zoom e mover</p>
+</section>
 <div id="scrim" hidden></div>
 <div id="sheet" hidden role="dialog" aria-modal="true"></div>
 <div id="toast" role="status"></div>
@@ -904,6 +921,92 @@ const Core = (() => {
   }
 
 
+
+  /* ---------- MODELO 3D: triângulos (posição, normal, cor) e arestas, z para cima ---------- */
+  function mesh3d(p, opts = {}) {
+    const nm = nodeMap(p), st = p.settings, geo = geometry(p, { cotas: false, cortes: false });
+    const tri = [], lin = [], glass = [];
+    const C = { wall: [0.93, 0.92, 0.89, 1], floor: [0.80, 0.76, 0.68, 1], slab: [0.72, 0.72, 0.74, 1], pil: [0.84, 0.16, 0.16, 1], roof: [0.78, 0.36, 0.22, 1], door: [0.55, 0.38, 0.22, 1], metal: [0.55, 0.57, 0.60, 1], glass: [0.55, 0.78, 0.95, 0.35], forro: [0.95, 0.95, 0.95, 1] };
+    const v3 = (P, z) => [P.x, P.y, z];
+    const nrm = (a, b, c) => { const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]; const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+    const tri3 = (a, b, c, col, out = tri) => { const n = nrm(a, b, c); out.push(...a, ...n, ...col, ...b, ...n, ...col, ...c, ...n, ...col); };
+    const quad = (a, b, c, d, col, out) => { tri3(a, b, c, col, out); tri3(a, c, d, col, out); };
+    const edge = (a, b) => lin.push(...a, ...b);
+    const area = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s += a.x * b.y - b.x * a.y; } return s / 2; };
+    // prisma vertical com topo que pode variar por canto (zt: número ou função do ponto)
+    const prism = (pts, z0, zt, col, edges = true) => {
+      if (area(pts) < 0) pts = pts.slice().reverse();
+      const top = (P) => typeof zt === 'function' ? zt(P) : zt;
+      const k = pts.length;
+      for (let i = 1; i + 1 < k; i++) { tri3(v3(pts[0], top(pts[0])), v3(pts[i], top(pts[i])), v3(pts[i + 1], top(pts[i + 1])), col); tri3(v3(pts[0], z0), v3(pts[i + 1], z0), v3(pts[i], z0), col); }
+      for (let i = 0; i < k; i++) {
+        const a = pts[i], b = pts[(i + 1) % k];
+        quad(v3(a, z0), v3(b, z0), v3(b, top(b)), v3(a, top(a)), col);
+        if (edges) { edge(v3(a, z0), v3(b, z0)); edge(v3(a, top(a)), v3(b, top(b))); edge(v3(a, z0), v3(a, top(a))); }
+      }
+    };
+    const pb = planBox(p);
+    if (!pb) return { tri: new Float32Array(0), lin: new Float32Array(0), glass: new Float32Array(0), box: null };
+    const ht = (st.t || 0.15) / 2;
+    const bx0 = pb.x0 - ht, by0 = pb.y0 - ht, bx1 = pb.x1 + ht, by1 = pb.y1 + ht;
+    const rm = st.top === 'telhado' ? roofModel(p) : null;
+    const perimeter = (A, B) => { const e = 0.05; return (Math.abs(A.x - B.x) < e && (Math.abs(A.x - pb.x0) < e || Math.abs(A.x - pb.x1) < e)) || (Math.abs(A.y - B.y) < e && (Math.abs(A.y - pb.y0) < e || Math.abs(A.y - pb.y1) < e)); };
+    // piso
+    prism([{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }], -0.10, 0, C.floor);
+    // paredes, com os vãos das portas e janelas
+    for (const q of geo.quads) {
+      const w = p.walls.find((x) => x.id === q.wall); if (!w) continue;
+      const A = nm.get(w.a), B = nm.get(w.b), u = unit(sub(B, A)), n = perp(u), Lw = len(sub(B, A));
+      const [P1, P2, M2, M1] = q.pts, H = w.h || st.pd;
+      const tOf = (P) => dot(sub(P, A), u);
+      const onF = (S, t) => add(S, mul(u, t - tOf(S)));
+      const foot = (ta, tb) => [ta == null ? P1 : onF(P1, ta), tb == null ? P2 : onF(P1, tb), tb == null ? M2 : onF(M1, tb), ta == null ? M1 : onF(M1, ta)];
+      const ext = rm && !w.h && perimeter(A, B);
+      const topFull = ext ? (P) => Math.max(H, rm.z(P)) : H;
+      const ivs = (w.ops || []).map((o) => { const s0 = o.d + refShift(p, w, w.a, nm); return { o, s0: Math.max(0, s0), s1: Math.min(Lw, s0 + o.w) }; }).filter((v) => v.s1 - v.s0 > 0.01).sort((a, b) => a.s0 - b.s0);
+      let cur = null;
+      for (const v of ivs) {
+        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), 0, topFull, C.wall);
+        const o = v.o, pe = opPe(o), top = Math.min(H, pe + opH(o)), f = foot(v.s0, v.s1);
+        if (pe > 0) prism(f, 0, pe, C.wall);
+        prism(f, top, topFull, C.wall);
+        const a0 = add(A, mul(u, v.s0)), a1 = add(A, mul(u, v.s1));
+        if (o.type === 'J') quad(v3(a0, pe), v3(a1, pe), v3(a1, top), v3(a0, top), C.glass, glass);
+        else if (o.type === 'P') {
+          const off = mul(n, (o.side === -1 ? -1 : 1) * (w.t / 2 - 0.02)), m = opModel(o) === 'enrolar' ? C.metal : C.door;
+          const b0 = add(a0, off), b1 = add(a1, off);
+          quad(v3(b0, 0), v3(b1, 0), v3(b1, top), v3(b0, top), m); quad(v3(b1, 0), v3(b0, 0), v3(b0, top), v3(b1, top), m);
+          edge(v3(b0, 0), v3(b0, top)); edge(v3(b1, 0), v3(b1, top)); edge(v3(b0, top), v3(b1, top));
+        }
+        cur = v.s1;
+      }
+      prism(foot(cur, null), 0, topFull, C.wall);
+    }
+    // pilares
+    for (const pl of p.pillars) prism(pillarCorners({ ...pl, bw: pl.bw + 0.012, bh: pl.bh + 0.012 }), 0, st.pd + (st.top === 'laje' ? (st.lajeT || 0.1) : 0) + 0.006, C.pil); // um pouco maior para não "brigar" com a parede
+    // cobertura
+    if (opts.cover !== false) {
+      const rect = [{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }];
+      if (st.top === 'laje') prism(rect, st.pd, st.pd + (st.lajeT || 0.1), C.slab);
+      else if (st.top === 'forro') prism(rect, st.pd, st.pd + 0.02, C.forro, false);
+      else if (rm) {
+        const b = st.roof.beiral || 0, x0 = bx0 - b, y0 = by0 - b, x1 = bx1 + b, y1 = by1 + b, tt = 0.06;
+        const R = (x, y) => { const P2 = { x, y }; return [x, y, rm.z(P2)]; };
+        const sheet = (pts) => { // telha com espessura: duas faces + bordas
+          const up = pts.map((q) => [q[0], q[1], q[2] + tt]);
+          for (let i = 1; i + 1 < pts.length; i++) { tri3(up[0], up[i], up[i + 1], C.roof); tri3(pts[0], pts[i + 1], pts[i], C.roof); }
+          for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; quad(pts[i], pts[j], up[j], up[i], C.roof); edge(up[i], up[j]); edge(pts[i], pts[j]); }
+        };
+        const rf = st.roof;
+        if (rf.aguas === 1) sheet([R(x0, y0), R(x1, y0), R(x1, y1), R(x0, y1)]);
+        else if (rf.cum === 'V') { sheet([R(x0, y0), R(rm.xc, y0), R(rm.xc, y1), R(x0, y1)]); sheet([R(rm.xc, y0), R(x1, y0), R(x1, y1), R(rm.xc, y1)]); }
+        else { sheet([R(x0, y0), R(x1, y0), R(x1, rm.yc), R(x0, rm.yc)]); sheet([R(x0, rm.yc), R(x1, rm.yc), R(x1, y1), R(x0, y1)]); }
+        if (rf.forro) prism(rect, st.pd, st.pd + 0.02, C.forro, false);
+      }
+    }
+    const zTop = st.pd + (rm ? rm.rise + 0.3 : 0.3);
+    return { tri: new Float32Array(tri), lin: new Float32Array(lin), glass: new Float32Array(glass), box: { x0: bx0, y0: by0, x1: bx1, y1: by1, z0: 0, z1: zTop } };
+  }
   /* ---------- croqui lido de uma foto (JSON vindo do Claude) → paredes ---------- */
   function fromSketch(p, data) {
     const tol = 0.12;
@@ -1050,12 +1153,122 @@ const Core = (() => {
     p.nodes = p.nodes.filter((n) => used.has(n.id));
   }
 
-  return { OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+  return { mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
 })();
 
 
 </script>
 <script>
+/* ---------- VISTA 3D (WebGL próprio, funciona sem internet) ---------- */
+const V3 = (() => {
+  let gl = null, prog = null, progL = null, bufs = {}, cam = null, cover = true, raf = 0, el = null, cvs = null, cnt = {};
+  const VS = `attribute vec3 p;attribute vec3 n;attribute vec4 c;uniform mat4 m;uniform vec3 L;varying vec4 vc;
+    void main(){gl_Position=m*vec4(p,1.0);vec3 nn=normalize(n);float d=abs(dot(nn,L));float h=0.5+0.5*nn.y;vc=vec4(c.rgb*(0.42+0.22*h+0.48*d),c.a);}`;
+  const FS = `precision mediump float;varying vec4 vc;void main(){gl_FragColor=vc;}`;
+  const VSL = `attribute vec3 p;uniform mat4 m;void main(){gl_Position=m*vec4(p,1.0);gl_Position.z-=0.00003*gl_Position.w;}`;
+  const FSL = `precision mediump float;uniform vec4 col;void main(){gl_FragColor=col;}`;
+  const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const mk = (v, f) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, v)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, f)); gl.linkProgram(p); return p; };
+  // matrizes 4x4 (coluna-maior)
+  const mul4 = (a, b) => { const o = new Float32Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; };
+  const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2), o = new Float32Array(16); o[0] = t / asp; o[5] = t; o[10] = (f + n) / (n - f); o[11] = -1; o[14] = 2 * f * n / (n - f); return o; };
+  const look = (e, c, up) => {
+    let zx = e[0] - c[0], zy = e[1] - c[1], zz = e[2] - c[2]; let l = Math.hypot(zx, zy, zz); zx /= l; zy /= l; zz /= l;
+    let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx; l = Math.hypot(xx, xy, xz); xx /= l; xy /= l; xz /= l;
+    const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+    return new Float32Array([xx, yx, zx, 0, xy, yy, zy, 0, xz, yz, zz, 0, -(xx * e[0] + xy * e[1] + xz * e[2]), -(yx * e[0] + yy * e[1] + yz * e[2]), -(zx * e[0] + zy * e[1] + zz * e[2]), 1]);
+  };
+  // planta (x, y, z-para-cima) -> GL (x, z, -y)
+  const toGL = (arr, stride) => { const o = new Float32Array(arr.length); for (let i = 0; i < arr.length; i += stride) { o.set(arr.subarray(i, i + stride), i); o[i + 1] = arr[i + 2]; o[i + 2] = -arr[i + 1]; if (stride >= 6) { o[i + 4] = arr[i + 5]; o[i + 5] = -arr[i + 4]; } } return o; };
+  const toGLlines = (arr) => { const o = new Float32Array(arr.length); for (let i = 0; i < arr.length; i += 3) { o[i] = arr[i]; o[i + 1] = arr[i + 2]; o[i + 2] = -arr[i + 1]; } return o; };
+  function upload(m) {
+    const put = (k, data) => { if (!bufs[k]) bufs[k] = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, bufs[k]); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); };
+    put('tri', toGL(m.tri, 10)); put('glass', toGL(m.glass, 10)); put('lin', toGLlines(m.lin));
+    cnt = { tri: m.tri.length / 10, glass: m.glass.length / 10, lin: m.lin.length / 3 };
+  }
+  function draw() {
+    raf = 0; if (!gl || !cam) return;
+    const W = cvs.clientWidth, H = cvs.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cvs.width !== Math.round(W * dpr) || cvs.height !== Math.round(H * dpr)) { cvs.width = Math.round(W * dpr); cvs.height = Math.round(H * dpr); }
+    gl.viewport(0, 0, cvs.width, cvs.height);
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark';
+    gl.clearColor(dark ? 0.10 : 0.86, dark ? 0.12 : 0.90, dark ? 0.15 : 0.94, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const e = [cam.t[0] + cam.d * Math.cos(cam.pi) * Math.sin(cam.yaw), cam.t[1] + cam.d * Math.sin(cam.pi), cam.t[2] + cam.d * Math.cos(cam.pi) * Math.cos(cam.yaw)];
+    const M = mul4(persp(0.8, W / Math.max(1, H), Math.max(0.1, cam.d / 15), cam.d * 6), look(e, cam.t, [0, 1, 0]));
+    const L = [0.45, 0.8, 0.35]; const ll = Math.hypot(...L);
+    gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+    const drawTri = (k, n) => {
+      if (!n) return;
+      gl.useProgram(prog); gl.bindBuffer(gl.ARRAY_BUFFER, bufs[k]);
+      const ap = gl.getAttribLocation(prog, 'p'), an = gl.getAttribLocation(prog, 'n'), ac = gl.getAttribLocation(prog, 'c');
+      gl.enableVertexAttribArray(ap); gl.enableVertexAttribArray(an); gl.enableVertexAttribArray(ac);
+      gl.vertexAttribPointer(ap, 3, gl.FLOAT, false, 40, 0); gl.vertexAttribPointer(an, 3, gl.FLOAT, false, 40, 12); gl.vertexAttribPointer(ac, 4, gl.FLOAT, false, 40, 24);
+      gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'm'), false, M); gl.uniform3f(gl.getUniformLocation(prog, 'L'), L[0] / ll, L[1] / ll, L[2] / ll);
+      gl.drawArrays(gl.TRIANGLES, 0, n);
+      gl.disableVertexAttribArray(an); gl.disableVertexAttribArray(ac);
+    };
+    gl.disable(gl.BLEND); gl.depthMask(true);
+    drawTri('tri', cnt.tri);
+    if (cnt.lin) {
+      gl.useProgram(progL); gl.bindBuffer(gl.ARRAY_BUFFER, bufs.lin);
+      const ap = gl.getAttribLocation(progL, 'p'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 3, gl.FLOAT, false, 12, 0);
+      gl.uniformMatrix4fv(gl.getUniformLocation(progL, 'm'), false, M); gl.uniform4f(gl.getUniformLocation(progL, 'col'), 0.16, 0.18, 0.22, 1);
+      gl.drawArrays(gl.LINES, 0, cnt.lin);
+    }
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+    drawTri('glass', cnt.glass);
+    gl.depthMask(true); gl.disable(gl.BLEND);
+  }
+  const req = () => { if (!raf) raf = requestAnimationFrame(draw); };
+  function fitCam(box) {
+    const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2, sz = Math.max(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0, 2);
+    const asp = cvs.clientWidth / Math.max(1, cvs.clientHeight), half = Math.hypot(box.x1 - box.x0, box.y1 - box.y0, box.z1 - box.z0) / 2;
+    const d = half / Math.sin(0.4) / Math.min(1, asp) * 1.05;
+    cam = { t: [cx, (box.z1 - box.z0) * 0.35, -cy], d, yaw: -0.6, pi: 0.55, sz };
+  }
+  function build(P, refit) {
+    const m = Core.mesh3d(P, { cover });
+    if (!m.box) return false;
+    upload(m); if (refit || !cam) fitCam(m.box); req(); return true;
+  }
+  function open(P) {
+    el = document.getElementById('v3d'); cvs = document.getElementById('cv3');
+    if (!gl) {
+      gl = cvs.getContext('webgl', { antialias: true }) || cvs.getContext('experimental-webgl');
+      if (!gl) return 'Este aparelho não tem suporte a 3D (WebGL).';
+      prog = mk(VS, FS); progL = mk(VSL, FSL); bindInput();
+    }
+    el.hidden = false;
+    if (!build(P, true)) { el.hidden = true; return 'Desenhe as paredes primeiro.'; }
+    return null;
+  }
+  function bindInput() {
+    const pts = new Map(); let pin = null;
+    cvs.addEventListener('pointerdown', (e) => { cvs.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pin = { d: Math.hypot(a.x - b.x, a.y - b.y), d0: cam.d, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; } });
+    cvs.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId) || !cam) return;
+      const q = pts.get(e.pointerId), dx = e.clientX - q.x, dy = e.clientY - q.y; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) { cam.yaw -= dx * 0.008; cam.pi = Math.max(-0.1, Math.min(1.5, cam.pi + dy * 0.008)); }
+      else if (pts.size === 2 && pin) {
+        const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        cam.d = Math.max(cam.sz * 0.15, Math.min(cam.sz * 8, pin.d0 * pin.d / Math.max(1, d)));
+        const k = cam.d / Math.max(200, cvs.clientHeight) * 1.2, ddx = mx - pin.mx, ddy = my - pin.my; pin.mx = mx; pin.my = my;
+        cam.t[0] -= (Math.cos(cam.yaw) * ddx) * k; cam.t[2] += (Math.sin(cam.yaw) * ddx) * k; cam.t[1] += ddy * k;
+      }
+      req();
+    });
+    const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pin = null; };
+    cvs.addEventListener('pointerup', up); cvs.addEventListener('pointercancel', up);
+    cvs.addEventListener('wheel', (e) => { e.preventDefault(); cam.d = Math.max(cam.sz * 0.15, Math.min(cam.sz * 8, cam.d * Math.exp(e.deltaY * 0.0012))); req(); }, { passive: false });
+    new ResizeObserver(req).observe(cvs);
+  }
+  return {
+    open, close: () => { if (el) el.hidden = true; },
+    toggleCover: (P) => { cover = !cover; build(P, false); return cover; },
+    reset: (P) => build(P, true)
+  };
+})();
+
 {
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1297,11 +1510,28 @@ function openProject(id, fresh) {
   fit();
   updStatus(); updTop();
 }
-function backHome() { closeSheet(); if (P) { persist(); writeLocal(); } P = null; $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
+function backHome() { closeSheet(); V3.close(); if (P) { persist(); writeLocal(); } P = null; $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
 $('#bBack').onclick = backHome;
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
 $('#bTitle').onclick = () => infoSheet();
 $('#bMore').onclick = moreMenu;
+$('#b3d').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
+$('#v3Close').onclick = () => V3.close();
+$('#v3Cover').onclick = () => { const on = V3.toggleCover(P); $('#v3Cover').textContent = on ? 'Tirar cobertura' : 'Pôr cobertura'; };
+$('#v3Reset').onclick = () => V3.reset(P);
+/* ímã: encaixa os pontos na quadrícula */
+const IMA_STEPS = [0, 1, 0.5];
+let ima = 0; try { ima = +(localStorage.getItem('croqui_ima') || 0); if (!IMA_STEPS.includes(ima)) ima = 0; } catch (e) {}
+function updIma() { const b = $('#bIma'); b.setAttribute('aria-pressed', String(ima > 0)); b.querySelector('span').textContent = ima ? (ima === 1 ? '1 m' : '0,5') : ''; b.setAttribute('aria-label', ima ? `Ímã ligado (${C.fmt(ima, ima === 1 ? 0 : 1)} m)` : 'Ímã desligado'); }
+$('#bIma').onclick = () => { ima = IMA_STEPS[(IMA_STEPS.indexOf(ima) + 1) % IMA_STEPS.length]; try { localStorage.setItem('croqui_ima', String(ima)); } catch (e) {} updIma(); toast(ima ? `Ímã ligado: os pontos encaixam a cada ${ima === 1 ? '1 m' : '0,50 m'} da quadrícula.` : 'Ímã desligado.'); render(); };
+updIma();
+const gridSnap = (w) => ima ? { x: Math.round(w.x / ima) * ima, y: Math.round(w.y / ima) * ima } : w;
+function clearDrawing() {
+  if (!P.walls.length && !P.pillars.length && !P.labels.length && !P.cuts.length) { toast('O desenho já está vazio.'); return; }
+  confirmSheet('Apagar todo o desenho?', 'Paredes, medidas, portas, janelas, pilares, textos, diagonais e cortes deste levantamento serão apagados. Os dados do levantamento (obra, endereço...) continuam. Dá para recuperar com Desfazer (↶).', 'Apagar desenho', () => {
+    pushUndo(); P.nodes = []; P.walls = []; P.pillars = []; P.labels = []; P.cuts = []; sel = null; changed(); setMode('parede'); toast('Desenho apagado. Use Desfazer (↶) se precisar.');
+  });
+}
 $('#bAdjust').onclick = doAdjust;
 $('#bMeasure').onclick = () => { measureRun = true; nextUnmeasured(); };
 $('#tools').querySelectorAll('button').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
@@ -1378,11 +1608,11 @@ function paint() {
   const g = ctx; g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = colors.paper; g.fillRect(0, 0, W, H);
   // quadrícula de 1 m (5 m quando afastado)
-  const step = view.s < 14 ? 5 : 1;
+  const step = view.s < 14 ? 5 : (ima === 0.5 && view.s > 40 ? 0.5 : 1);
   const w0 = toW(0, H), w1 = toW(W, 0);
   g.lineWidth = 1;
-  for (let x = Math.floor(w0.x / step) * step; x <= w1.x; x += step) { const sx = Math.round(view.ox + x * view.s) + .5; g.strokeStyle = (Math.round(x) % 5 === 0) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(sx, 0); g.lineTo(sx, H); g.stroke(); }
-  for (let y = Math.floor(w0.y / step) * step; y <= w1.y; y += step) { const sy = Math.round(view.oy - y * view.s) + .5; g.strokeStyle = (Math.round(y) % 5 === 0) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(0, sy); g.lineTo(W, sy); g.stroke(); }
+  for (let x = Math.floor(w0.x / step) * step; x <= w1.x; x += step) { const sx = Math.round(view.ox + x * view.s) + .5; g.strokeStyle = (Math.abs(x - Math.round(x / 5) * 5) < 1e-6) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(sx, 0); g.lineTo(sx, H); g.stroke(); }
+  for (let y = Math.floor(w0.y / step) * step; y <= w1.y; y += step) { const sy = Math.round(view.oy - y * view.s) + .5; g.strokeStyle = (Math.abs(y - Math.round(y / 5) * 5) < 1e-6) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(0, sy); g.lineTo(W, sy); g.stroke(); }
   const geo = C.geometry(P);
   const poly = (pts) => { g.beginPath(); pts.forEach((p2, i) => { const s = toS(p2); i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y); }); g.closePath(); };
   g.fillStyle = colors.wall;
@@ -1441,7 +1671,8 @@ function paint() {
   }
   // traço em andamento
   if (drawing && drawing.path.length > 2 && mode === 'parede') {
-    const poly = strokePoly(drawing.path);
+    let poly = strokePoly(drawing.path);
+    if (ima) poly = poly.map((q) => toS(gridSnap(toW(q.x, q.y))));
     if (poly.length > 2) {
       g.strokeStyle = colors.muted; g.lineWidth = 1.5; g.globalAlpha = .6;
       g.beginPath(); drawing.path.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)); g.stroke(); g.globalAlpha = 1;
@@ -1525,6 +1756,13 @@ function snap(sx, sy, from) {
   const tolN = 24 / view.s;
   const n = nearestNode(w, tolN, from && from.nodeId);
   if (n) return { pt: { x: n.x, y: n.y }, nodeId: n.id };
+  if (ima) { // ímã ligado: crava na quadrícula (mantém reto em relação ao ponto de partida)
+    let g = gridSnap(w);
+    if (from) { const dx = g.x - from.pt.x, dy = g.y - from.pt.y, tan = Math.tan(10 * Math.PI / 180); if (Math.abs(dy) <= tan * Math.abs(dx)) g = { x: g.x, y: from.pt.y }; else if (Math.abs(dx) <= tan * Math.abs(dy)) g = { x: from.pt.x, y: g.y }; }
+    const n2 = nearestNode(g, 0.02, from && from.nodeId); if (n2) return { pt: { x: n2.x, y: n2.y }, nodeId: n2.id };
+    const nw = nearestWall(g, 0.02); if (nw && nw.t > 0.02 && nw.t < 0.98) return { pt: nw.Q, wallId: nw.wall.id, guides: [] };
+    return { pt: g, guides: [] };
+  }
   const guides = [];
   let lockH = false, lockV = false;
   if (from) {
@@ -1812,7 +2050,8 @@ function placePillar(p) {
     for (const x of C.paredes(P)) if (x.a === n.id || x.b === n.id) { const A = nm.get(x.a), B = nm.get(x.b), l = Math.hypot(B.x - A.x, B.y - A.y); if (l > bl) { bl = l; best = Math.atan2(B.y - A.y, B.x - A.x) * 180 / Math.PI; } }
     if (best !== null) rot = ((Math.round(best) + 90) % 180 + 180) % 180;
   }
-  const pl = { id: C.uid('p'), x: n ? n.x : w.x, y: n ? n.y : w.y, bw: P.settings.pw || 0.15, bh: P.settings.ph || 0.30, rot, name: 'P' + (P.pillars.length + 1) };
+  const wg = gridSnap(w);
+  const pl = { id: C.uid('p'), x: n ? n.x : wg.x, y: n ? n.y : wg.y, bw: P.settings.pw || 0.15, bh: P.settings.ph || 0.30, rot, name: 'P' + (P.pillars.length + 1) };
   pushUndo(); P.pillars.push(pl); sel = { type: 'pillar', id: pl.id }; changed();
 }
 /* barra flutuante do pilar selecionado */
@@ -2156,16 +2395,20 @@ function moreMenu() {
   openSheet(`<h2>${esc(P.name)}</h2><div class="menu">
     <button data-a="dxf"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Exportar para o AutoCAD<small>Baixa o desenho .dxf (em metros, por layers)</small></span></button>
     <button data-a="photo"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg><span>Ler croqui de uma foto<small>Desenho feito no papel vira paredes, com as medidas escritas</small></span></button>
+    <button data-a="v3"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Vista 3D<small>Gire com um dedo; dois dedos para zoom e mover</small></span></button>
     <button data-a="fit"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Enquadrar planta</span></button>
     <button data-a="all"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="8"/><rect x="4" y="14" width="16" height="7"/></svg><span>Ver planta e cortes</span></button>
     <button data-a="info"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Dados do levantamento<small>Obra, endereço, coordenadas, responsável, padrões</small></span></button>
     <button data-a="bak"><svg class="i" viewBox="0 0 24 24"><path d="M6 20h12a2 2 0 002-2V8l-5-5H6a2 2 0 00-2 2v13a2 2 0 002 2z"/><path d="M14 3v5h5"/></svg><span>Salvar backup (.json)</span></button>
     <button data-a="copy"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></svg><span>Copiar texto do DXF<small>Alternativa no computador: colar num arquivo .dxf</small></span></button>
+    <button data-a="clear" style="color:var(--red)"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span>Apagar todo o desenho<small>Mantém os dados do levantamento; dá para desfazer</small></span></button>
     <button data-a="key"><svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span>Chave da API<small>Necessária só para a leitura do croqui por foto</small></span></button>
     <button data-a="help"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg><span>Como usar</span></button></div>
     <p style="margin-top:10px">Os levantamentos ficam salvos neste celular. Faça backup (.json) de vez em quando.</p>`, (sh) => {
     sh.querySelector('[data-a=dxf]').onclick = () => { closeSheet(); exportZip(); };
     sh.querySelector('[data-a=fit]').onclick = () => { closeSheet(); fit(); };
+    sh.querySelector('[data-a=v3]').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
+    sh.querySelector('[data-a=clear]').onclick = () => { closeSheet(); clearDrawing(); };
     sh.querySelector('[data-a=photo]').onclick = () => { closeSheet(); photoSheet(); };
     sh.querySelector('[data-a=all]').onclick = () => { closeSheet(); fitAll(); };
     sh.querySelector('[data-a=info]').onclick = () => { closeSheet(); infoSheet(); };
@@ -2179,12 +2422,15 @@ function helpSheet() {
   openSheet(`<h2>Como usar</h2><ol class="help">
     <li><b>Começar:</b> desenhe à mão ou use "Começar por foto do croqui" (precisa da chave da API e de internet). Nos dados do levantamento, "Usar GPS do celular" preenche as coordenadas.</li>
     <li><b>Parede:</b> desenhe à mão livre. Um traço reto vira uma parede; contornando o ambiente sem tirar o dedo, cada lado vira uma parede e as quinas são endireitadas. Encaixa na horizontal/vertical, nos pontos e nas paredes existentes (cria o "T"). A lupa no canto mostra a ponta sob o dedo e, depois da 1ª medida, o comprimento.</li>
+    <li><b>Ímã (botão do ímã no topo):</b> liga o encaixe na quadrícula, a cada 1 m ou 0,50 m. Toque de novo para trocar ou desligar. Desenhando no tamanho real com o ímã, a 1ª medida quase não muda o desenho.</li>
     <li><b>Medir:</b> percorre as paredes sem medida. A 1ª medida dá escala ao croqui inteiro. Depois, o desenho fica travado e só a parede editada muda: escolha se a diferença vai para o lado A, para o lado B ou se divide, e se as paredes ligadas andam junto (mantém ângulos) ou giram.</li>
     <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
     <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
     <li><b>Texto:</b> nome dos ambientes e observações.</li>
     <li><b>Diagonal:</b> confere o esquadro do ambiente (medida entre cantos internos × desenho).</li>
     <li><b>Corte:</b> arraste atravessando a planta. O corte sai abaixo dela com pé-direito, laje, forro ou telhado, peitoris, alturas e cotas.</li>
+    <li><b>3D (botão no topo):</b> mostra o levantamento em 3D com portas, janelas, pilares e cobertura. Um dedo gira; dois dedos dão zoom e movem. "Tirar cobertura" mostra o interior.</li>
+    <li><b>Apagar todo o desenho (menu ⋯):</b> limpa o croqui de uma vez; Desfazer recupera.</li>
     <li><b>Conferir:</b> lista as medidas que não batem com o desenho e as diagonais.</li>
     <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, INFO.</li></ol>
     <p>Dois dedos: mover e zoom. Desfazer e refazer no topo. No modo Editar, arraste pontos, pilares e textos.</p>

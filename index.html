@@ -114,6 +114,8 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
 .models button{display:flex;align-items:center;gap:10px;text-align:left;min-height:52px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;line-height:1.2}
 .models button[aria-pressed=true]{border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--panel));font-weight:600}
 .models svg.i{flex:none;width:28px;height:28px}
+.models.mats{grid-template-columns:repeat(4,minmax(0,1fr))}
+.models.mats button{flex-direction:column;justify-content:center;gap:2px;font-size:12px;min-height:58px;text-align:center;padding:6px 2px}
 .dbox{border:1.5px solid var(--accent);border-radius:12px;padding:10px 12px 2px;margin:0 0 12px;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
 .dbox p{color:var(--ink)}
 </style>
@@ -203,7 +205,7 @@ const Core = (() => {
     if (!p.v || p.v < 2) { for (const pl of p.pillars) pl.rot = pl.rot === 1 ? 90 : (pl.rot || 0); p.v = 2; }
     if (p.v < 3) { for (const w of p.walls) if (w.kind !== 'verif') w.ori = 'L'; p.v = 3; }
     if (p.v < 4) { for (const w of p.walls) if (w.kind === 'verif') w.use = false; p.v = 4; }
-    for (const w of p.walls) w.ops = (w.ops || []).filter((o) => !o._tmp);
+    for (const w of p.walls) { w.ops = (w.ops || []).filter((o) => !o._tmp); if (w.kind !== 'verif') { w.mat = w.mat || 'alv'; w.bulge = w.bulge || 0; } }
     return p;
   }
   const nodeMap = (p) => { const m = new Map(); for (const n of p.nodes) m.set(n.id, n); return m; };
@@ -453,6 +455,46 @@ const Core = (() => {
     return { x: x / p.nodes.length, y: y / p.nodes.length };
   }
 
+  /* ---------- parede curva: arco definido pela flecha (bulge) no meio da corda A-B ---------- */
+  function arcInfo(p, w, nm) {
+    const f = w.bulge || 0;
+    if (Math.abs(f) < 1e-3 || w.kind === 'verif') return null;
+    nm = nm || nodeMap(p);
+    const A = nm.get(w.a), B = nm.get(w.b); if (!A || !B) return null;
+    const c = len(sub(B, A)); if (c < 1e-6) return null;
+    const u = unit(sub(B, A)), n = perp(u), M = mul(add(A, B), 0.5);
+    const af = Math.abs(f), R = (c * c / 4 + af * af) / (2 * af);
+    const C = add(M, mul(n, f - Math.sign(f) * R));
+    const aA = Math.atan2(A.y - C.y, A.x - C.x), aB = Math.atan2(B.y - C.y, B.x - C.x);
+    const Pm = add(M, mul(n, f)), aM = Math.atan2(Pm.y - C.y, Pm.x - C.x);
+    const norm = (x) => { x %= 2 * Math.PI; return x < 0 ? x + 2 * Math.PI : x; };
+    const ccwSweep = norm(aB - aA), ccw = norm(aM - aA) < ccwSweep;
+    const sweep = ccw ? ccwSweep : -(2 * Math.PI - ccwSweep);
+    const pt = (t, r = R) => { const a = aA + sweep * t; return { x: C.x + r * Math.cos(a), y: C.y + r * Math.sin(a) }; };
+    const tan = (t) => { const a = aA + sweep * t; return ccw ? { x: -Math.sin(a), y: Math.cos(a) } : { x: Math.sin(a), y: -Math.cos(a) }; };
+    return { C, R, aA, sweep, ccw, pt, tan, chord: c, f, Pm, n, arcLen: Math.abs(sweep) * R };
+  }
+  const MAT_LAYER = { alv: 'PAREDES', cobogo: 'COBOGO', gradil: 'GRADIL', vidro: 'VIDRO' };
+  const wallLayer = (w) => MAT_LAYER[w.mat || 'alv'] || 'PAREDES';
+  const wallH = (w, st) => w.h || (w.mat === 'gradil' ? 1.10 : st.pd);
+  /* distância de um ponto à parede (reta ou curva) */
+  function wallDist(p, w, P, nm) {
+    nm = nm || nodeMap(p);
+    const A = nm.get(w.a), B = nm.get(w.b);
+    const ai = arcInfo(p, w, nm);
+    if (!ai) {
+      const ab = sub(B, A), t = Math.max(0, Math.min(1, dot(sub(P, A), ab) / Math.max(dot(ab, ab), 1e-12)));
+      const Q = add(A, mul(ab, t)); return { d: len(sub(P, Q)), t, Q, arc: false };
+    }
+    let best = { d: Infinity }; const N = 48;
+    for (let k = 0; k < N; k++) { // distância à polilinha do arco
+      const a = ai.pt(k / N), b = ai.pt((k + 1) / N), ab = sub(b, a), t = Math.max(0, Math.min(1, dot(sub(P, a), ab) / Math.max(dot(ab, ab), 1e-12)));
+      const Q = add(a, mul(ab, t)), d = len(sub(P, Q)); if (d < best.d) best = { d, t: (k + t) / N, Q, arc: true };
+    }
+    return best;
+  }
+  const wallMid = (p, w, nm) => { nm = nm || nodeMap(p); const ai = arcInfo(p, w, nm); if (ai) return ai.Pm; const A = nm.get(w.a), B = nm.get(w.b); return mul(add(A, B), 0.5); };
+
   function geometry(p, opts = {}) {
     const nm = nodeMap(p);
     const prims = [], quads = [], holes = [];
@@ -462,11 +504,12 @@ const Core = (() => {
     // pontas por nó
     const endsAt = new Map();
     const ends = new Map(); // key wall.id+':a'|':b'
+    const arcs = new Map(ws.map((w) => [w.id, arcInfo(p, w, nm)]));
     for (const w of ws) {
       for (const side of ['a', 'b']) {
         const nid = w[side], other = side === 'a' ? w.b : w.a;
-        const N = nm.get(nid), O = nm.get(other);
-        const d = unit(sub(O, N));
+        const N = nm.get(nid), O = nm.get(other), ai = arcs.get(w.id);
+        const d = ai ? (side === 'a' ? ai.tan(0) : mul(ai.tan(1), -1)) : unit(sub(O, N));
         const e = { w, nid, d, ang: Math.atan2(d.y, d.x), t: w.t, N, left: null, right: null, cap: false };
         ends.set(w.id + ':' + side, e);
         if (!endsAt.has(nid)) endsAt.set(nid, []);
@@ -498,9 +541,43 @@ const Core = (() => {
       const A = nm.get(w.a), B = nm.get(w.b);
       const u = unit(sub(B, A)), n = perp(u), Lw = len(sub(B, A));
       const ea = ends.get(w.id + ':a'), eb = ends.get(w.id + ':b');
+      const lay = wallLayer(w), mat = w.mat || 'alv';
+      const ai = arcs.get(w.id);
+      if (ai) { // parede curva
+        const h = w.t / 2, Ro = ai.R + h, Ri = Math.max(0.01, ai.R - h), N = 32, outer = [], inner = [];
+        for (let k = 0; k <= N; k++) { outer.push(ai.pt(k / N, Ro)); inner.push(ai.pt(k / N, Ri)); }
+        quads.push({ wall: w.id, mat, pts: [...outer, ...inner.slice().reverse()] });
+        const a0d = ai.aA * 180 / Math.PI, a1d = (ai.aA + ai.sweep) * 180 / Math.PI;
+        const arcP = (r) => prims.push({ type: 'arc', layer: lay, c: ai.C, r, a0: ai.ccw ? a0d : a1d, a1: ai.ccw ? a1d : a0d });
+        if (mat === 'gradil') arcP(ai.R); else { arcP(Ro); arcP(Ri); if (mat === 'vidro') arcP(ai.R); }
+        const con = (a, b) => { if (len(sub(a, b)) > 0.002) L(lay, a, b); };
+        const oA = outer[0], iA = inner[0], oB = outer[N], iB = inner[N];
+        if (mat !== 'gradil') {
+          if (ea.cap) L(lay, oA, iA); else { con(ai.ccw ? iA : oA, ea.left); con(ai.ccw ? oA : iA, ea.right); }
+          if (eb.cap) L(lay, oB, iB); else { con(ai.ccw ? oB : iB, eb.left); con(ai.ccw ? iB : oB, eb.right); }
+        }
+        if (opts.cotas !== false) {
+          const sg = ai.f > 0 ? -1 : 1; // cota da corda do lado oposto à curva
+          const s0 = refShift(p, w, w.a, nm), s1 = Lw - refShift(p, w, w.b, nm);
+          const at2 = (s, off) => add(add(A, mul(u, s)), mul(n, off));
+          let txt, layer;
+          if (w.len != null) {
+            txt = fmt(w.len); layer = 'COTAS';
+            const T0 = axisTarget(p, w, nm); if (Math.abs(Lw - T0) > 0.01) { txt += ' (desenho ' + fmt(w.len + Lw - T0) + ')'; layer = 'COTAS-DIVERGENTES'; }
+          } else { txt = '~' + fmt(s1 - s0); layer = 'COTAS-ESTIMADAS'; }
+          txt += ' corda - flecha ' + fmt(Math.abs(ai.f));
+          const off = sg * (w.t / 2 + 0.35), d0 = at2(s0, off), d1 = at2(s1, off);
+          L(layer, d0, d1); L(layer, at2(s0, sg * (w.t / 2 + 0.05)), at2(s0, off + sg * 0.08)); L(layer, at2(s1, sg * (w.t / 2 + 0.05)), at2(s1, off + sg * 0.08));
+          const tk = mul(unit(add(u, n)), 0.05); L(layer, sub(d0, tk), add(d0, tk)); L(layer, sub(d1, tk), add(d1, tk));
+          const tp = at2((s0 + s1) / 2, off + sg * 0.11); T(layer, tp.x, tp.y, 0.12, txt, readable(u));
+          const rd = unit(sub(ai.Pm, ai.C)), rp = add(ai.Pm, mul(rd, w.t / 2 + 0.25));
+          T(layer, rp.x, rp.y, 0.11, 'R ' + fmt(ai.R), readable(perp(rd)));
+        }
+        continue;
+      }
       const sP1 = ea.left, sP2 = eb.right;   // face +n
       const sM1 = ea.right, sM2 = eb.left;   // face -n
-      quads.push({ wall: w.id, pts: [sP1, sP2, sM2, sM1] });
+      quads.push({ wall: w.id, mat, pts: [sP1, sP2, sM2, sM1] });
       // aberturas: intervalos ao longo do eixo
       const ivs = (w.ops || []).map((o) => {
         const s0 = o.d + refShift(p, w, w.a, nm);
@@ -513,20 +590,28 @@ const Core = (() => {
         const pt = (t) => add(P1, mul(u, t - t1));
         let cur = t1;
         for (const v of ivs) {
-          if (v.s0 > cur + 1e-4) L('PAREDES', pt(cur), pt(Math.min(v.s0, t2)));
+          if (v.s0 > cur + 1e-4) L(lay, pt(cur), pt(Math.min(v.s0, t2)));
           cur = Math.max(cur, v.s1);
         }
-        if (t2 > cur + 1e-4) L('PAREDES', pt(cur), P2);
+        if (t2 > cur + 1e-4) L(lay, pt(cur), P2);
       };
-      face(sP1, sP2, w.t / 2);
-      face(sM1, sM2, -w.t / 2);
-      if (ea.cap) L('PAREDES', sP1, sM1);
-      if (eb.cap) L('PAREDES', sP2, sM2);
+      const tA = Math.max(tOf(sP1), tOf(sM1)), tB = Math.min(tOf(sP2), tOf(sM2));
+      const freeRuns = (cb) => { let cur = tA; for (const v of ivs) { if (v.s0 > cur + 1e-4) cb(cur, Math.min(v.s0, tB)); cur = Math.max(cur, v.s1); } if (tB > cur + 1e-4) cb(cur, tB); };
+      if (mat === 'gradil') { // gradil: eixo com montantes a cada 12 cm
+        freeRuns((a, b) => { L(lay, at(a, 0), at(b, 0)); for (let x = a; x <= b + 1e-6; x += 0.12) L(lay, at(x, -0.035), at(x, 0.035)); });
+      } else {
+        face(sP1, sP2, w.t / 2);
+        face(sM1, sM2, -w.t / 2);
+        if (ea.cap) L(lay, sP1, sM1);
+        if (eb.cap) L(lay, sP2, sM2);
+        const hh = w.t / 2 * 0.8;
+        if (mat === 'cobogo') freeRuns((a, b) => { for (let x = a; x < b - 1e-6; x += 0.2) { const x2 = Math.min(b, x + 0.2); L(lay, at(x, -hh), at(x2, hh)); L(lay, at(x, hh), at(x2, -hh)); } });
+        if (mat === 'vidro') freeRuns((a, b) => L(lay, at(a, 0), at(b, 0)));
+      }
       for (const v of ivs) {
         const o = v.o, h = w.t / 2;
         holes.push({ pts: [at(v.s0, h + 0.005), at(v.s1, h + 0.005), at(v.s1, -h - 0.005), at(v.s0, -h - 0.005)] });
-        L('PAREDES', at(v.s0, h), at(v.s0, -h));
-        L('PAREDES', at(v.s1, h), at(v.s1, -h));
+        if (mat !== 'gradil') { L(lay, at(v.s0, h), at(v.s0, -h)); L(lay, at(v.s1, h), at(v.s1, -h)); }
         const wd = v.s1 - v.s0;
         const sg = o.side === -1 ? -1 : 1, E = 'ESQUADRIAS';
         const swing = (hingeS, closedSign, r, side) => { // folha de abrir com arco
@@ -637,10 +722,21 @@ const Core = (() => {
     });
   }
 
+  /* pontos que definem o contorno da construção: cantos e o bojo das paredes curvas */
+  function shapePts(p) {
+    const out = p.nodes.slice(), nm = nodeMap(p);
+    for (const w of p.walls) { const ai = arcInfo(p, w, nm); if (ai) for (let k = 1; k < 8; k++) out.push(ai.pt(k / 8, ai.R + (ai.f > 0 ? 1 : 1) * 0)); }
+    return out;
+  }
+  function buildBox(p) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const P of shapePts(p)) { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); }
+    return x0 === Infinity ? null : { x0, y0, x1, y1 };
+  }
   function planBox(p) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); });
+    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); });
     return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
@@ -654,6 +750,20 @@ const Core = (() => {
     for (const w of ws) {
       const A = nm.get(w.a), B = nm.get(w.b);
       const e = sub(B, A), Lw = len(e), u = unit(e);
+      const ai = arcInfo(p, w, nm);
+      if (ai) { // parede curva: interseção da linha do corte com o círculo, dentro do arco
+        const D = sub(C0, ai.C), bq = 2 * dot(c, D), cq = dot(D, D) - ai.R * ai.R, disc = bq * bq - 4 * cq;
+        if (disc < 0) continue;
+        for (const sc of [(-bq - Math.sqrt(disc)) / 2, (-bq + Math.sqrt(disc)) / 2]) {
+          if (sc < 0 || sc > Lc) continue;
+          const P = add(C0, mul(c, sc)), a = Math.atan2(P.y - ai.C.y, P.x - ai.C.x);
+          let da = a - ai.aA; if (ai.sweep > 0) { da = ((da % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); if (da > ai.sweep) continue; } else { da = ((-da % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); if (da > -ai.sweep) continue; }
+          const rad = unit(sub(P, ai.C)), cs = Math.abs(dot(c, rad));
+          if (cs < 0.05) continue;
+          hits.push({ s: cut.flip ? Lc - sc : sc, tc: Math.min(w.t / cs, 3 * w.t), h: wallH(w, st), op: null, w });
+        }
+        continue;
+      }
       const den = cross(c, u);
       if (Math.abs(den) < 0.05) continue; // quase paralela
       const sc = cross(sub(A, C0), u) / den;     // posição ao longo do corte
@@ -666,7 +776,7 @@ const Core = (() => {
         if (tw >= s0 && tw <= s0 + o.w) { op = o; break; }
       }
       const s = cut.flip ? Lc - sc : sc;
-      hits.push({ s, tc, h: w.h || st.pd, op, w });
+      hits.push({ s, tc, h: wallH(w, st), op, w });
     }
     hits.sort((a, b) => a.s - b.s);
     return { hits, Lc };
@@ -684,8 +794,7 @@ const Core = (() => {
   function roofModel(p) {
     const st = p.settings, rf = st.roof, nb = p.nodes;
     if (!nb.length) return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const n of nb) { x0 = Math.min(x0, n.x); y0 = Math.min(y0, n.y); x1 = Math.max(x1, n.x); y1 = Math.max(y1, n.y); }
+    let { x0, y0, x1, y1 } = buildBox(p);
     const h = (st.t || 0.15) / 2; x0 -= h; y0 -= h; x1 += h; y1 += h; // faces externas
     const i = Math.max(0, rf.i || 0), xc = (x0 + x1) / 2, yc = (y0 + y1) / 2;
     let z, rise;
@@ -726,18 +835,19 @@ const Core = (() => {
       const rect = (s0, s1, z0, z1, layer) => {
         if (z1 - z0 < 1e-4 || s1 - s0 < 1e-4) return;
         const pts = [P2(s0, z0), P2(s1, z0), P2(s1, z1), P2(s0, z1)];
-        prims.push({ type: 'solid', layer: layer + '-HACH', pts });
+        if (layer !== 'CORTE-GRADIL' && layer !== 'CORTE-VIDRO') prims.push({ type: 'solid', layer: layer + '-HACH', pts });
         for (let k = 0; k < 4; k++) L(layer, pts[k], pts[(k + 1) % 4]);
       };
       const hs = sd.hits;
       const xmin = hs[0].s - hs[0].tc / 2, xmax = hs[hs.length - 1].s + hs[hs.length - 1].tc / 2;
       for (const h of hs) {
         const s0 = h.s - h.tc / 2, s1 = h.s + h.tc / 2;
-        if (!h.op) rect(s0, s1, 0, h.h, 'CORTE-PAREDES');
+        const cl = { cobogo: 'CORTE-COBOGO', gradil: 'CORTE-GRADIL', vidro: 'CORTE-VIDRO' }[h.w.mat] || 'CORTE-PAREDES';
+        if (!h.op) rect(s0, s1, 0, h.h, cl);
         else {
           const o = h.op, pe = opPe(o), top = Math.min(h.h, pe + opH(o));
-          if (o.type === 'J') rect(s0, s1, 0, pe, 'CORTE-PAREDES');
-          rect(s0, s1, top, h.h, 'CORTE-PAREDES');
+          if (o.type === 'J') rect(s0, s1, 0, pe, cl);
+          rect(s0, s1, top, h.h, cl);
           if (o.type === 'J') { L('ESQUADRIAS', P2(h.s, pe), P2(h.s, top)); }
           else if (o.type === 'P') { L('ESQUADRIAS', P2(s0, top), P2(s0, 0)); L('ESQUADRIAS', P2(s1, top), P2(s1, 0)); }
           // cotas verticais da abertura
@@ -822,7 +932,8 @@ const Core = (() => {
   const LAYERS = [
     ['PAREDES', 7], ['ESQUADRIAS', 4], ['PILARES', 1], ['COTAS', 3], ['COTAS-ESTIMADAS', 30], ['COTAS-DIVERGENTES', 6],
     ['VERIFICACAO', 6], ['TEXTOS', 2], ['INFO', 8], ['CORTES', 5],
-    ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31]
+    ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31],
+    ['COBOGO', 33], ['GRADIL', 8], ['VIDRO', 4], ['CORTE-COBOGO', 33], ['CORTE-COBOGO-HACH', 51], ['CORTE-GRADIL', 8], ['CORTE-VIDRO', 4]
   ];
   const enc = (s) => String(s).replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
   const num = (v) => (Math.round(v * 1e6) / 1e6).toString();
@@ -939,18 +1050,18 @@ const Core = (() => {
     const edge = (a, b) => lin.push(...a, ...b);
     const area = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s += a.x * b.y - b.x * a.y; } return s / 2; };
     // prisma vertical com topo que pode variar por canto (zt: número ou função do ponto)
-    const prism = (pts, z0, zt, col, edges = true) => {
+    const prism = (pts, z0, zt, col, edges = true, out = tri) => {
       if (area(pts) < 0) pts = pts.slice().reverse();
       const top = (P) => typeof zt === 'function' ? zt(P) : zt;
       const k = pts.length;
-      for (let i = 1; i + 1 < k; i++) { tri3(v3(pts[0], top(pts[0])), v3(pts[i], top(pts[i])), v3(pts[i + 1], top(pts[i + 1])), col); tri3(v3(pts[0], z0), v3(pts[i + 1], z0), v3(pts[i], z0), col); }
+      for (let i = 1; i + 1 < k; i++) { tri3(v3(pts[0], top(pts[0])), v3(pts[i], top(pts[i])), v3(pts[i + 1], top(pts[i + 1])), col, out); tri3(v3(pts[0], z0), v3(pts[i + 1], z0), v3(pts[i], z0), col, out); }
       for (let i = 0; i < k; i++) {
         const a = pts[i], b = pts[(i + 1) % k];
-        quad(v3(a, z0), v3(b, z0), v3(b, top(b)), v3(a, top(a)), col);
+        quad(v3(a, z0), v3(b, z0), v3(b, top(b)), v3(a, top(a)), col, out);
         if (edges) { edge(v3(a, z0), v3(b, z0)); edge(v3(a, top(a)), v3(b, top(b))); edge(v3(a, z0), v3(a, top(a))); }
       }
     };
-    const pb = planBox(p);
+    const pb = buildBox(p);
     if (!pb) return { tri: new Float32Array(0), lin: new Float32Array(0), glass: new Float32Array(0), box: null };
     const ht = (st.t || 0.15) / 2;
     const bx0 = pb.x0 - ht, by0 = pb.y0 - ht, bx1 = pb.x1 + ht, by1 = pb.y1 + ht;
@@ -959,22 +1070,35 @@ const Core = (() => {
     // piso
     prism([{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }], -0.10, 0, C.floor);
     // paredes, com os vãos das portas e janelas
+    const MATC = { alv: [C.wall, tri], cobogo: [[0.86, 0.82, 0.74, 0.62], glass], gradil: [[0.22, 0.23, 0.25, 0.5], glass], vidro: [C.glass, glass] };
     for (const q of geo.quads) {
       const w = p.walls.find((x) => x.id === q.wall); if (!w) continue;
       const A = nm.get(w.a), B = nm.get(w.b), u = unit(sub(B, A)), n = perp(u), Lw = len(sub(B, A));
-      const [P1, P2, M2, M1] = q.pts, H = w.h || st.pd;
+      const [wc, wo] = MATC[w.mat || 'alv'] || MATC.alv, H = wallH(w, st);
+      const ai = arcInfo(p, w, nm);
+      if (ai) { // parede curva em gomos
+        const N = 32, h = w.t / 2, Ro = ai.R + h, Ri = Math.max(0.01, ai.R - h);
+        for (let k = 0; k < N; k++) {
+          const o0 = ai.pt(k / N, Ro), o1 = ai.pt((k + 1) / N, Ro), i0 = ai.pt(k / N, Ri), i1 = ai.pt((k + 1) / N, Ri);
+          prism([o0, o1, i1, i0], 0, H, wc, false, wo);
+          for (const [a, b] of [[o0, o1], [i0, i1]]) { edge(v3(a, H), v3(b, H)); edge(v3(a, 0), v3(b, 0)); }
+        }
+        for (const t of [0, 1]) { const o = ai.pt(t, Ro), i = ai.pt(t, Ri); edge(v3(o, 0), v3(o, H)); edge(v3(i, 0), v3(i, H)); edge(v3(o, H), v3(i, H)); }
+        continue;
+      }
+      const [P1, P2, M2, M1] = q.pts;
       const tOf = (P) => dot(sub(P, A), u);
       const onF = (S, t) => add(S, mul(u, t - tOf(S)));
       const foot = (ta, tb) => [ta == null ? P1 : onF(P1, ta), tb == null ? P2 : onF(P1, tb), tb == null ? M2 : onF(M1, tb), ta == null ? M1 : onF(M1, ta)];
-      const ext = rm && !w.h && perimeter(A, B);
+      const ext = rm && !w.h && (w.mat || 'alv') === 'alv' && perimeter(A, B);
       const topFull = ext ? (P) => Math.max(H, rm.z(P)) : H;
       const ivs = (w.ops || []).map((o) => { const s0 = o.d + refShift(p, w, w.a, nm); return { o, s0: Math.max(0, s0), s1: Math.min(Lw, s0 + o.w) }; }).filter((v) => v.s1 - v.s0 > 0.01).sort((a, b) => a.s0 - b.s0);
       let cur = null;
       for (const v of ivs) {
-        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), 0, topFull, C.wall);
+        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), 0, topFull, wc, true, wo);
         const o = v.o, pe = opPe(o), top = Math.min(H, pe + opH(o)), f = foot(v.s0, v.s1);
-        if (pe > 0) prism(f, 0, pe, C.wall);
-        prism(f, top, topFull, C.wall);
+        if (pe > 0) prism(f, 0, pe, wc, true, wo);
+        prism(f, top, topFull, wc, true, wo);
         const a0 = add(A, mul(u, v.s0)), a1 = add(A, mul(u, v.s1));
         if (o.type === 'J') quad(v3(a0, pe), v3(a1, pe), v3(a1, top), v3(a0, top), C.glass, glass);
         else if (o.type === 'P') {
@@ -985,7 +1109,7 @@ const Core = (() => {
         }
         cur = v.s1;
       }
-      prism(foot(cur, null), 0, topFull, C.wall);
+      prism(foot(cur, null), 0, topFull, wc, true, wo);
     }
     // pilares
     for (const pl of p.pillars) prism(pillarCorners({ ...pl, bw: pl.bw + 0.012, bh: pl.bh + 0.012 }), 0, st.pd + (st.top === 'laje' ? (st.lajeT || 0.1) : 0) + 0.006, C.pil); // um pouco maior para não "brigar" com a parede
@@ -1158,7 +1282,7 @@ const Core = (() => {
     p.nodes = p.nodes.filter((n) => used.has(n.id));
   }
 
-  return { mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+  return { arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
 })();
 
 
@@ -1425,7 +1549,13 @@ function closeSheet() {
   $('#sheet').hidden = true; $('#scrim').hidden = true; $('#sheet').innerHTML = '';
   const f = sheetClose; sheetClose = null; f && f();
 }
-$('#scrim').addEventListener('click', closeSheet);
+$('#scrim').addEventListener('click', (e) => { // fecha a folha e já seleciona o que foi tocado no desenho
+  closeSheet();
+  if (!P || $('#editor').hidden) return;
+  const r = cv.getBoundingClientRect(), p = { x: e.clientX - r.left, y: e.clientY - r.top };
+  if (p.x < 0 || p.y < 0 || p.x > r.width || p.y > r.height) return;
+  if (mode === 'editar' || mode === 'parede' || mode === 'diag' || mode === 'pilar') setTimeout(() => tapSelect(p), 0);
+});
 function confirmSheet(title, text, okLabel, onOk) {
   openSheet(`<h2>${esc(title)}</h2><p>${esc(text)}</p><div class="acts"><button class="pill" data-x>Cancelar</button><button class="pill pri" data-ok>${esc(okLabel)}</button></div>`, (sh) => {
     sh.querySelector('[data-x]').onclick = closeSheet;
@@ -1584,7 +1714,7 @@ function readColors() {
   colors = { paper: res('--paper'), ink: res('--ink'), muted: res('--muted'), grid: res('--grid'), grid2: res('--grid2'), wall: res('--wall'), accent: res('--accent'), red: res('--red'), orange: res('--orange'), cyan: res('--cyan'), mag: res('--mag'), ok: res('--ok') };
   probe.remove(); v;
 }
-const layerColor = (l) => ({ PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink }[l] || colors.ink);
+const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink }[l] || colors.ink);
 function resize() {
   const r = $('#stage').getBoundingClientRect();
   dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
@@ -1623,8 +1753,11 @@ function paint() {
   for (let y = Math.floor(w0.y / step) * step; y <= w1.y; y += step) { const sy = Math.round(view.oy - y * view.s) + .5; g.strokeStyle = (Math.abs(y - Math.round(y / 5) * 5) < 1e-6) ? colors.grid2 : colors.grid; g.beginPath(); g.moveTo(0, sy); g.lineTo(W, sy); g.stroke(); }
   const geo = C.geometry(P);
   const poly = (pts) => { g.beginPath(); pts.forEach((p2, i) => { const s = toS(p2); i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y); }); g.closePath(); };
-  g.fillStyle = colors.wall;
-  for (const q of geo.quads) { poly(q.pts); g.fill(); }
+  for (const q of geo.quads) {
+    if (q.mat === 'gradil') continue;
+    g.fillStyle = q.mat === 'vidro' ? colors.cyan : colors.wall; g.globalAlpha = q.mat === 'vidro' ? 0.25 : q.mat === 'cobogo' ? 0.55 : 1;
+    poly(q.pts); g.fill(); g.globalAlpha = 1;
+  }
   g.fillStyle = colors.paper;
   for (const h of geo.holes) { poly(h.pts); g.fill(); }
   if (sel && sel.type === 'wall') { const q = geo.quads.find((x) => x.wall === sel.id); if (q) { g.fillStyle = colors.accent; g.globalAlpha = .28; poly(q.pts); g.fill(); g.globalAlpha = 1; } }
@@ -1632,7 +1765,7 @@ function paint() {
     const col = layerColor(q.layer);
     if (q.type === 'line') {
       const a = toS(q.a), b = toS(q.b);
-      g.strokeStyle = col; g.lineWidth = q.layer === 'PAREDES' ? 1.6 : 1;
+      g.strokeStyle = col; g.lineWidth = (q.layer === 'PAREDES' || q.layer === 'GRADIL') ? 1.6 : 1;
       if (q.layer === 'VERIFICACAO') g.setLineDash([6, 4]);
       if (q.layer === 'CORTES') { g.setLineDash([12, 4, 3, 4]); g.lineWidth = sel && sel.type === 'cut' ? 2.5 : 1.4; }
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]);
@@ -1654,7 +1787,7 @@ function paint() {
   g.font = '600 11px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   C.paredes(P).forEach((w, i) => {
     const A = nm.get(w.a), B = nm.get(w.b); if (!A || !B) return;
-    const m = toS({ x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 });
+    const m = toS(C.wallMid(P, w, nm));
     const isSel = sel && sel.type === 'wall' && sel.id === w.id;
     g.fillStyle = isSel ? colors.accent : (w.len == null ? colors.orange : colors.paper);
     g.beginPath(); g.arc(m.x, m.y, 9, 0, 7); g.fill();
@@ -1775,7 +1908,7 @@ function nearestWall(w, tol, kinds = 'parede') {
   for (const x of P.walls) {
     if (kinds === 'parede' && x.kind === 'verif') continue;
     const A = nm.get(x.a), B = nm.get(x.b); if (!A || !B) continue;
-    const r = segDist(w, A, B);
+    const r = x.kind === 'verif' ? segDist(w, A, B) : C.wallDist(P, x, w, nm);
     const lim = x.kind === 'verif' ? tol : Math.max(tol, x.t / 2 + tol * 0.5);
     if (r.d < lim && r.d < bd) { bd = r.d; best = { wall: x, ...r }; }
   }
@@ -1808,7 +1941,7 @@ function snap(sx, sy, from, lock = true) {
     if (from && lock) { const dx = g.x - from.pt.x, dy = g.y - from.pt.y, tan = Math.tan(10 * Math.PI / 180); if (Math.abs(dy) <= tan * Math.abs(dx)) g = { x: g.x, y: from.pt.y }; else if (Math.abs(dx) <= tan * Math.abs(dy)) g = { x: from.pt.x, y: g.y }; }
     const n2 = nearestNode(g, 0.02, from && from.nodeId); if (n2) return { pt: { x: n2.x, y: n2.y }, nodeId: n2.id };
     const guidesG = alignGuides(g, from && from.nodeId).filter((m) => !(from && from.pt && Math.hypot(m.x - from.pt.x, m.y - from.pt.y) < 1e-6));
-    const nw = nearestWall(g, 0.02); if (nw && nw.t > 0.02 && nw.t < 0.98) return { pt: nw.Q, wallId: nw.wall.id, guides: guidesG };
+    const nw = nearestWall(g, 0.02); if (nw && !nw.arc && nw.t > 0.02 && nw.t < 0.98) return { pt: nw.Q, wallId: nw.wall.id, guides: guidesG };
     return { pt: g, guides: guidesG };
   }
   const guides = [];
@@ -1828,7 +1961,7 @@ function snap(sx, sy, from, lock = true) {
   if (bx) { w.x = bx.x; guides.push(bx); }
   if (by) { w.y = by.y; guides.push(by); }
   const nw = nearestWall(w, 16 / view.s);
-  if (nw && nw.t > 0.02 && nw.t < 0.98) {
+  if (nw && !nw.arc && nw.t > 0.02 && nw.t < 0.98) {
     const nm = C.nodeMap(P), A = nm.get(nw.wall.a), B = nm.get(nw.wall.b);
     let Q = nw.Q;
     if (from && (lockH || lockV)) { // mantém a direção travada ao encostar numa parede
@@ -1843,7 +1976,7 @@ function resolveNode(sn) {
   if (sn.nodeId) return P.nodes.find((n) => n.id === sn.nodeId);
   if (sn.wallId) {
     const nw = nearestWall(sn.pt, 0.05);
-    if (nw && nw.t > 0.001 && nw.t < 0.999) {
+    if (nw && !nw.arc && nw.t > 0.001 && nw.t < 0.999) {
       if (nw.wall.len != null) toast(`A parede ${C.wallNumber(P, nw.wall)} foi dividida; a medida dela virou uma cota "Total" para conferência.`);
       return C.splitWall(P, nw.wall, nw.Q);
     }
@@ -1926,8 +2059,11 @@ cv.addEventListener('pointerdown', (e) => {
   } else if (mode === 'editar' || mode === 'pilar') {
     const n = mode === 'editar' ? nearestNode(w, 22 / view.s) : null;
     const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null;
+    let hb = null; // número da parede: tocar seleciona, arrastar curva a parede
+    if (mode === 'editar' && !hp && !n) { const nm = C.nodeMap(P); for (const x of C.paredes(P)) { const m = C.wallMid(P, x, nm); if (Math.hypot(m.x - w.x, m.y - w.y) < 18 / view.s) { hb = x; break; } } }
     if (hp) drag = { type: 'pillar', o: hp, moved: false };
     else if (n) drag = { type: 'node', o: n, moved: false };
+    else if (hb) drag = { type: 'bend', o: hb, moved: false };
     else if (hl) drag = { type: 'label', o: hl, moved: false };
     else panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy };
   } else {
@@ -1954,7 +2090,16 @@ cv.addEventListener('pointermove', (e) => {
   }
   if (drag) {
     if (!drag.moved && !moved) return;
+    if (!drag.moved && drag.type === 'bend' && (drag.o.ops || []).length) { toast('Para curvar, retire antes as portas e janelas desta parede.'); drag = null; return; }
     if (!drag.moved) { pushUndo(); drag.moved = true; }
+    if (drag.type === 'bend') {
+      const nm = C.nodeMap(P), A = nm.get(drag.o.a), B = nm.get(drag.o.b), u = C.unit(C.sub(B, A)), M = C.mul(C.add(A, B), 0.5);
+      let f = C.dot(C.sub(toW(p.x, p.y), M), C.perp(u));
+      if (Math.abs(f) * view.s < 12) f = 0;
+      f = Math.round(f * 100) / 100;
+      const maxF = C.len(C.sub(B, A)) / 2; if (Math.abs(f) > maxF) f = Math.sign(f) * maxF; // no máximo meia circunferência
+      drag.o.bulge = f; render(); return;
+    }
     if (drag.type === 'node') {
       const sn = snap(p.x, p.y, { pt: drag.o, nodeId: drag.o.id }, false);
       const w = sn.nodeId ? (ima ? gridSnap(toW(p.x, p.y)) : toW(p.x, p.y)) : sn.pt;
@@ -2047,6 +2192,7 @@ function endPtr(e) {
     if (dg.moved) {
       if (dg.type === 'node') mergeNode(dg.o);
       if (dg.type === 'pillar') sel = { type: 'pillar', id: dg.o.id };
+      if (dg.type === 'bend' && dg.o.bulge) toast(`Parede curva: flecha ${C.fmt(Math.abs(dg.o.bulge))} m. Ajuste fino na folha da parede.`);
       changed(); return;
     }
     if (dg.type === 'pillar') {
@@ -2055,7 +2201,7 @@ function endPtr(e) {
       return;
     }
     if (dg.type === 'label') { sel = { type: 'label', id: dg.o.id }; render(); labelSheet(dg.o); return; }
-    if (dg.type === 'node') { tapSelect(p); return; }
+    if (dg.type === 'node' || dg.type === 'bend') { tapSelect(p); return; }
   }
   if (panning) {
     const pn = panning; panning = null;
@@ -2081,13 +2227,32 @@ function mergeNode(n) {
   const seen = new Set(); P.walls = P.walls.filter((w) => { const k = [w.a, w.b].sort().join('|') + w.kind; if (seen.has(k)) return false; seen.add(k); return true; });
   C.removeOrphans(P);
 }
+/* paredes perto do toque: o número da parede vale como alvo; toques repetidos no mesmo lugar alternam entre as candidatas */
+let lastTap = null;
+function wallCandidates(w) {
+  const nm = C.nodeMap(P), tol = 30 / view.s, out = [];
+  for (const x of P.walls) {
+    const A = nm.get(x.a), B = nm.get(x.b); if (!A || !B) continue;
+    let d = x.kind === 'verif' ? segDist(w, A, B).d : C.wallDist(P, x, w, nm).d;
+    if (x.kind !== 'verif') { const m = C.wallMid(P, x, nm); if (Math.hypot(m.x - w.x, m.y - w.y) < 16 / view.s) d = -1; else d = Math.max(0, d - x.t / 2); }
+    if (d < tol) out.push({ wall: x, d });
+  }
+  return out.sort((a, b) => a.d - b.d);
+}
 function tapSelect(p) {
   const w = toW(p.x, p.y);
   const hp = hitPillar(w); if (hp) { sel = { type: 'pillar', id: hp.id }; render(); return; }
   const hc = hitCut(w); if (hc) { sel = { type: 'cut', id: hc.id }; render(); cutSheet(hc); return; }
-  const nw = nearestWall(w, 18 / view.s, 'all');
-  if (nw) { sel = { type: 'wall', id: nw.wall.id }; render(); nw.wall.kind === 'verif' ? verifSheet(nw.wall) : wallSheet(nw.wall); centerOn(nw.wall, true); }
-  else { sel = null; render(); }
+  const cands = wallCandidates(w);
+  if (!cands.length) { sel = null; lastTap = null; render(); return; }
+  let i = 0;
+  if (lastTap && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 14 && Date.now() - lastTap.t < 8000 && cands.length > 1) {
+    const prev = cands.findIndex((c) => c.wall.id === lastTap.id); i = (prev + 1) % cands.length;
+  }
+  const x = cands[i].wall;
+  lastTap = { x: p.x, y: p.y, t: Date.now(), id: x.id };
+  if (cands.length > 1 && i === 0) setTimeout(() => toast('Não é essa? Toque de novo no mesmo lugar para escolher a parede vizinha.'), 400);
+  sel = { type: 'wall', id: x.id }; render(); x.kind === 'verif' ? verifSheet(x) : wallSheet(x); centerOn(x, true);
 }
 function rotatePillar(pl, deg) { pushUndo(); pl.rot = (((pl.rot || 0) + deg) % 360 + 360) % 360; changed(); }
 function placePillar(p) {
@@ -2121,6 +2286,13 @@ fbar.querySelector('[data-f=del]').onclick = () => { const pl = P.pillars.find((
 
 /* ---------- folhas de propriedades ---------- */
 const refOpts = [['interna', 'Face interna'], ['eixo', 'Eixo'], ['externa', 'Face externa']];
+const WALL_MATS = [['alv', 'Alvenaria'], ['cobogo', 'Cobogó'], ['gradil', 'Gradil'], ['vidro', 'Vidro']];
+const MAT_ICONS = {
+  alv: '<rect x="3" y="8" width="18" height="8"/>',
+  cobogo: '<rect x="3" y="8" width="18" height="8"/><path d="M3 8l4.5 8M7.5 8L3 16M7.5 8l4.5 8M12 8l-4.5 8M12 8l4.5 8M16.5 8L12 16M16.5 8l4.5 8M21 8l-4.5 8"/>',
+  gradil: '<path d="M2 12h20M4 9v6M8 9v6M12 9v6M16 9v6M20 9v6"/>',
+  vidro: '<path d="M3 10h18M3 14h18M3 12h18" />'
+};
 /* mostra, na folha, onde ficam os pontos A e B da parede na tela */
 function abBadge(w) {
   const nm = C.nodeMap(P), A = toS(nm.get(w.a)), B = toS(nm.get(w.b));
@@ -2139,6 +2311,7 @@ function wallSheet(w) {
   const opsTxt = (w.ops || []).map((o, i) => `<div><span>${o.type === 'P' ? 'Porta' : o.type === 'J' ? 'Janela' : 'Vão'}${o.type !== 'V' ? ' ' + opModelName(o).toLowerCase() : ''} ${C.fmt(o.w)} m · a ${C.fmt(o.d)} m de A${o.label ? ' · ' + esc(o.label) : ''}</span><button class="iconbtn" data-eo="${i}" aria-label="Editar abertura"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button></div>`).join('');
   const remaining = C.paredes(P).filter((x) => x.len == null && x !== w).length;
   const isFirst = () => !C.paredes(P).some((x) => x.len != null && x !== w);
+  const origB = w.bulge || 0; let savedB = false;
   openSheet(`<h2>Parede ${num}</h2>
     ${abBadge(w)}
     <div class="f"><label for="iLen">Medida da trena (m) — de A até B</label><input id="iLen" class="big" inputmode="decimal" autocomplete="off" placeholder="ex.: 3,45" value="${w.len != null ? C.fmt(w.len) : ''}"></div>
@@ -2148,16 +2321,37 @@ function wallSheet(w) {
       <div class="f" id="dSide"><span class="lab">A diferença vai para</span>${segHTML('side', [['A', '◀ Lado A'], ['AB', 'Dividir'], ['B', 'Lado B ▶']], lastSide)}</div>
       <div class="f" id="dCarry"><span class="lab">Paredes ligadas à ponta que se move</span>${segHTML('carry', [['1', 'Andam junto (mantém ângulos)'], ['0', 'Giram']], lastCarry)}</div>
     </div>
+    <span class="lab">Tipo de parede</span>
+    <div class="models mats">${WALL_MATS.map(([k, l]) => `<button type="button" data-mat="${k}" aria-pressed="${(w.mat || 'alv') === k}"><svg class="i" viewBox="0 0 24 24">${MAT_ICONS[k]}</svg><span>${l}</span></button>`).join('')}</div>
     <div class="row"><div class="f"><label for="iT">Espessura (cm)</label><input id="iT" inputmode="decimal" value="${C.fmt(w.t * 100, 0)}"></div>
     <div class="f"><label for="iHw">Altura (m)</label><input id="iHw" inputmode="decimal" placeholder="PD ${C.fmt(P.settings.pd)}" value="${w.h ? C.fmt(w.h) : ''}"></div></div>
+    <div class="row"><div class="f"><label for="iBg">Curva: flecha (m)</label><input id="iBg" inputmode="decimal" placeholder="0 = reta" value="${w.bulge ? C.fmt(Math.abs(w.bulge)) : ''}"></div>
+    <div class="f"><span class="lab">&nbsp;</span><button class="pill" type="button" data-bflip style="height:46px">Curvar para o outro lado</button></div></div>
+    <p>Flecha = distância do meio da corda (reta A-B) até a parede. Também dá para curvar arrastando o número da parede no modo Editar.</p>
+    <div id="opsBox"${w.bulge ? ' hidden' : ''}>
     <span class="lab">Portas e janelas nesta parede</span>
     ${opsTxt ? `<div class="list">${opsTxt}</div>` : '<p>Nenhuma.</p>'}
     <div class="acts" style="margin-bottom:14px"><button class="pill" data-op="P">+ Porta</button><button class="pill" data-op="J">+ Janela</button><button class="pill" data-op="V">+ Vão</button></div>
+    </div>
+    <p id="opsCurve"${w.bulge ? '' : ' hidden'}>Portas e janelas não são lançadas em parede curva.</p>
     <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill" data-flip>Inverter A/B</button>
     ${measureRun && remaining ? '<button class="pill pri" data-next>Salvar e próxima</button>' : '<button class="pill pri" data-ok>Salvar</button>'}</div>`, (sh) => {
     bindSegs(sh);
     const inp = sh.querySelector('#iLen');
     if (w.len == null) setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    // tipo de parede e curva (com prévia no desenho)
+    let mat = w.mat || 'alv', bSign = (w.bulge || 0) < 0 ? -1 : 1;
+    sh.querySelectorAll('[data-mat]').forEach((b) => b.onclick = () => {
+      mat = b.dataset.mat; sh.querySelectorAll('[data-mat]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      const tI = sh.querySelector('#iT'), hI = sh.querySelector('#iHw');
+      const defT = { alv: 15, cobogo: 15, gradil: 5, vidro: 4 }[mat];
+      if (['15', '5', '4'].includes(tI.value.trim())) tI.value = String(defT);
+      if (mat === 'gradil' && !hI.value.trim()) hI.value = '1,10';
+    });
+    const bulgeVal = () => { const v = numVal(sh, '#iBg'); return v && v > 0 ? bSign * v : 0; };
+    const liveB = () => { w.bulge = bulgeVal(); sh.querySelector('#opsBox').hidden = !!w.bulge; sh.querySelector('#opsCurve').hidden = !w.bulge; render(); };
+    sh.querySelector('#iBg').addEventListener('input', liveB);
+    sh.querySelector('[data-bflip]').onclick = () => { bSign = -bSign; if (!numVal(sh, '#iBg')) sh.querySelector('#iBg').value = C.fmt(Math.max(0.3, C.len(C.sub(nm.get(w.b), nm.get(w.a))) / 4)); liveB(); };
     // mostra a diferença para o desenho e pergunta para que lado ela vai
     const upd = () => {
       const L = numVal(sh, '#iLen'), box = sh.querySelector('#dBox');
@@ -2179,11 +2373,13 @@ function wallSheet(w) {
       const L = numVal(sh, '#iLen'), t = numVal(sh, '#iT');
       if (sh.querySelector('#iLen').value.trim() && (L == null || L <= 0)) { toast('Medida inválida.'); return false; }
       if (t == null || t <= 0 || t > 100) { toast('Espessura inválida.'); return false; }
-      const hw = numVal(sh, '#iHw');
-      const before = JSON.stringify([w.len, w.t, w.ref, w.h || null]);
-      const after = JSON.stringify([L, t / 100, segVal(sh, 'ref'), hw && hw > 0 ? hw : null]);
-      if (before === after) return true;
-      pushUndo();
+      const hw = numVal(sh, '#iHw'), bg = bulgeVal();
+      if (bg && (w.ops || []).length) { toast('Retire antes as portas e janelas para curvar a parede.'); return false; }
+      const before = JSON.stringify([w.len, w.t, w.ref, w.h || null, origB, w.mat || 'alv']);
+      const after = JSON.stringify([L, t / 100, segVal(sh, 'ref'), hw && hw > 0 ? hw : null, bg, mat]);
+      savedB = true;
+      if (before === after) { w.bulge = origB; return true; }
+      w.bulge = origB; pushUndo(); w.bulge = bg; w.mat = mat;
       const first = L != null && isFirst();
       w.len = L; w.t = t / 100; w.ref = segVal(sh, 'ref'); w.h = hw && hw > 0 ? hw : null;
       P.settings.ref = w.ref;
@@ -2204,7 +2400,7 @@ function wallSheet(w) {
     sh.querySelector('[data-flip]').onclick = () => { if (!save()) return; const run = measureRun; const span = C.len(C.sub(nm.get(w.b), nm.get(w.a))) - C.refShift(P, w, w.a) - C.refShift(P, w, w.b); [w.a, w.b] = [w.b, w.a]; for (const o of w.ops || []) { o.d = Math.max(0, span - o.d - o.w); o.hinge = o.hinge ? 0 : 1; } changed(); sheetClose = null; measureRun = run; sel = { type: 'wall', id: w.id }; wallSheet(w); };
     sh.querySelectorAll('[data-op]').forEach((b) => b.onclick = () => { if (!save()) return; opSheet(w, null, b.dataset.op); });
     sh.querySelectorAll('[data-eo]').forEach((b) => b.onclick = () => { if (!save()) return; opSheet(w, w.ops[+b.dataset.eo]); });
-  }, () => { measureRun = false; sel = null; render(); setTimeout(() => { if ($('#sheet').hidden) { restoreView(); keepVisible(); } }, 0); });
+  }, () => { if (!savedB) w.bulge = origB; measureRun = false; sel = null; render(); setTimeout(() => { if ($('#sheet').hidden) { restoreView(); keepVisible(); } }, 0); });
 }
 function keepVisible() {
   const bb = C.planBox(P); if (!bb) return;
@@ -2497,6 +2693,8 @@ function helpSheet() {
     <li><b>Linhas auxiliares:</b> ao desenhar ou arrastar um ponto, uma linha tracejada roxa aparece quando ele está alinhado (na mesma vertical ou horizontal) com um canto já desenhado, como o da parede oposta. Sem o ímã, o ponto também "puxa" para esse alinhamento.</li>
     <li><b>Ímã (botão do ímã no topo):</b> liga o encaixe na quadrícula, a cada 1 m ou 0,50 m. Toque de novo para trocar ou desligar. Desenhando no tamanho real com o ímã, a 1ª medida quase não muda o desenho.</li>
     <li><b>Medir:</b> percorre as paredes sem medida. A 1ª medida dá escala ao croqui inteiro. Depois, o desenho fica travado e só a parede editada muda: escolha se a diferença vai para o lado A, para o lado B ou se divide, e se as paredes ligadas andam junto (mantém ângulos) ou giram.</li>
+    <li><b>Tipo de parede e curva:</b> na folha da parede escolha Alvenaria, Cobogó, Gradil ou Vidro. Para parede redonda, informe a flecha (do meio da corda até a parede) ou, no modo Editar, arraste o número da parede.</li>
+    <li><b>Selecionar parede:</b> toque nela ou no número dela. Se pegar a vizinha, toque de novo no mesmo lugar para alternar. Com a folha aberta, tocar em outra parede no desenho já abre a folha dela.</li>
     <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
     <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
     <li><b>Texto:</b> nome dos ambientes e observações.</li>

@@ -60,9 +60,14 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .tools button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 8px;font-size:11.5px;color:var(--muted);min-height:56px}
 .tools button[aria-pressed=true]{color:var(--accent);font-weight:600;box-shadow:inset 0 3px 0 var(--accent)}
 /* folha inferior */
-#scrim{position:fixed;inset:0;background:rgba(0,0,0,.25)}
-#sheet{position:fixed;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;background:var(--panel);border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.2);padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
-#sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.08)}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;background:var(--panel);border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.2);padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+#sheet .grab{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;padding:2px 0 8px;min-height:30px}
+#sheet .grab span{width:40px;height:4px;border-radius:2px;background:var(--line)}
+#sheet .grab em{font-style:normal;font-size:12px;color:var(--muted)}
+#sheet.min{max-height:118px;overflow:hidden}
+.ab{display:flex;align-items:center;gap:10px;margin:-4px 0 12px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--ink)}
+.ab svg{flex:none;color:var(--ink)}
 #sheet h2{font-size:20px;margin:0 0 12px;line-height:1.2}
 #sheet p{margin:0 0 12px;color:var(--muted);font-size:15px}
 .f{display:grid;gap:4px;margin-bottom:12px}
@@ -198,7 +203,7 @@ const Core = (() => {
     if (!p.v || p.v < 2) { for (const pl of p.pillars) pl.rot = pl.rot === 1 ? 90 : (pl.rot || 0); p.v = 2; }
     if (p.v < 3) { for (const w of p.walls) if (w.kind !== 'verif') w.ori = 'L'; p.v = 3; }
     if (p.v < 4) { for (const w of p.walls) if (w.kind === 'verif') w.use = false; p.v = 4; }
-    for (const w of p.walls) w.ops = w.ops || [];
+    for (const w of p.walls) w.ops = (w.ops || []).filter((o) => !o._tmp);
     return p;
   }
   const nodeMap = (p) => { const m = new Map(); for (const n of p.nodes) m.set(n.id, n); return m; };
@@ -576,7 +581,7 @@ const Core = (() => {
       if (opts.cotas !== false) {
         const c = centroid(p);
         const mid = at(Lw / 2, 0);
-        const sg = dot(sub(mid, c), n) >= 0 ? 1 : -1;
+        const sgOut = dot(sub(mid, c), n) >= 0 ? 1 : -1, sg = w.ref === 'interna' ? -sgOut : sgOut; // medida pela face interna: cota do lado de dentro, de face a face
         let s0 = 0, s1 = Lw, txt, layer;
         if (w.len != null) {
           s0 = refShift(p, w, w.a, nm);
@@ -1378,7 +1383,8 @@ function persist() {
   P.updatedAt = Date.now();
   mem[P.id] = P;
   clearTimeout(persist.t);
-  persist.t = setTimeout(() => { if (!writeLocal() && !cloud) toast('Não foi possível salvar neste aparelho. Faça um backup (.json).'); queueCloud(P.id); }, 350);
+  const pid = P.id;
+  persist.t = setTimeout(() => { if (!writeLocal() && !cloud) toast('Não foi possível salvar neste aparelho. Faça um backup (.json).'); queueCloud(pid); }, 350);
 }
 
 /* ---------- estado ---------- */
@@ -1407,8 +1413,10 @@ let sheetClose = null;
 function openSheet(html, bind, onClose) {
   const sh = $('#sheet');
   $('#fbar').hidden = true;
-  sh.innerHTML = '<div class="grab"></div>' + html;
+  sh.innerHTML = '<button type="button" class="grab" aria-label="Recolher ou abrir a folha"><span></span><em>▾ ver o desenho</em></button>' + html;
+  sh.classList.remove('min');
   sh.hidden = false; $('#scrim').hidden = false;
+  sh.querySelector('.grab').onclick = () => { const m = sh.classList.toggle('min'); sh.querySelector('.grab em').textContent = m ? '▴ abrir a folha' : '▾ ver o desenho'; sh.scrollTop = 0; };
   sheetClose = onClose || null;
   bind && bind(sh);
   sh.scrollTop = 0;
@@ -1719,7 +1727,17 @@ function drawLoupe() {
     const last = drawing.path && drawing.path.length ? drawing.path[drawing.path.length - 1] : null;
     const free = mode === 'parede' && drawing.path.length > 2 && strokePoly(drawing.path).length > 2;
     f = free && last ? last : toS(drawing.end.pt);
-    if (!free && C.paredes(P).some((w) => w.len != null)) len = Math.hypot(drawing.end.pt.x - drawing.start.pt.x, drawing.end.pt.y - drawing.start.pt.y);
+    if (!free && C.paredes(P).some((w) => w.len != null)) {
+      const d = C.sub(drawing.end.pt, drawing.start.pt), L = Math.hypot(d.x, d.y), u = C.unit(d);
+      // conta da face da parede em que o traço começa/termina (não do eixo dela)
+      const trim = (sn) => {
+        const cands = sn.wallId ? P.walls.filter((x) => x.id === sn.wallId) : sn.nodeId ? C.paredes(P).filter((x) => x.a === sn.nodeId || x.b === sn.nodeId) : [];
+        const nm = C.nodeMap(P); let t = 0, best = 0.5;
+        for (const x of cands) { const v = C.unit(C.sub(nm.get(x.b), nm.get(x.a))), s = Math.abs(C.cross(u, v)); if (s > best) { best = s; t = x.t / 2; } }
+        return t;
+      };
+      len = Math.max(0, L - trim(drawing.start) - trim(drawing.end));
+    }
   } else f = toS(drag.o);
   const r = 70, z = 2.5, src = (2 * r) / z;
   const left = f.x > W / 2;
@@ -2103,6 +2121,14 @@ fbar.querySelector('[data-f=del]').onclick = () => { const pl = P.pillars.find((
 
 /* ---------- folhas de propriedades ---------- */
 const refOpts = [['interna', 'Face interna'], ['eixo', 'Eixo'], ['externa', 'Face externa']];
+/* mostra, na folha, onde ficam os pontos A e B da parede na tela */
+function abBadge(w) {
+  const nm = C.nodeMap(P), A = toS(nm.get(w.a)), B = toS(nm.get(w.b));
+  const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  const where = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? ['à esquerda', 'à direita'] : ['à direita', 'à esquerda']) : (dy > 0 ? ['em cima', 'embaixo'] : ['embaixo', 'em cima']);
+  const cx = 44, cy = 22, r = 30, ax = cx - ux * r, ay = cy - uy * r, bx = cx + ux * r, by = cy + uy * r;
+  return `<div class="ab"><svg viewBox="0 0 88 44" width="88" height="44" aria-hidden="true"><line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="currentColor" stroke-width="5" stroke-linecap="round" opacity=".35"/><circle cx="${ax}" cy="${ay}" r="9" fill="var(--accent)"/><text x="${ax}" y="${ay + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">A</text><circle cx="${bx}" cy="${by}" r="9" fill="var(--accent)"/><text x="${bx}" y="${by + 4}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">B</text></svg><span><b>A</b> fica ${where[0]} e <b>B</b> ${where[1]} (como na tela)</span></div>`;
+}
 let lastSide = 'B', lastCarry = '1';
 function wallSheet(w) {
   const num = C.wallNumber(P, w);
@@ -2114,6 +2140,7 @@ function wallSheet(w) {
   const remaining = C.paredes(P).filter((x) => x.len == null && x !== w).length;
   const isFirst = () => !C.paredes(P).some((x) => x.len != null && x !== w);
   openSheet(`<h2>Parede ${num}</h2>
+    ${abBadge(w)}
     <div class="f"><label for="iLen">Medida da trena (m) — de A até B</label><input id="iLen" class="big" inputmode="decimal" autocomplete="off" placeholder="ex.: 3,45" value="${w.len != null ? C.fmt(w.len) : ''}"></div>
     <div class="f"><span class="lab">A medida foi tomada pela</span>${segHTML('ref', refOpts, w.ref)}</div>
     <div id="dBox" class="dbox" hidden>
@@ -2198,8 +2225,11 @@ function centerOn(w, onlyIfHidden) {
   const st = $('#stage').getBoundingClientRect(), sh = $('#sheet');
   const visH = Math.max(80, (sh.hidden ? st.bottom : sh.getBoundingClientRect().top) - st.top);
   const cur = toS(m);
-  if (onlyIfHidden && cur.y > 30 && cur.y < visH - 30 && cur.x > 20 && cur.x < W - 20) return;
+  const Ls = Math.hypot(B.x - A.x, B.y - A.y) * view.s;
+  if (onlyIfHidden && cur.y > 30 && cur.y < visH - 30 && cur.x > 20 && cur.x < W - 20 && Ls < W * 0.95) return;
   if (!view0) view0 = { ...view };
+  const want = Math.min(W * 0.6, visH * 1.2), Lm = Math.hypot(B.x - A.x, B.y - A.y);
+  if (Lm > 0.05 && (Ls > W * 0.9 || Ls < W * 0.25)) view.s = Math.max(8, Math.min(400, want / Lm));
   view.ox = W / 2 - m.x * view.s; view.oy = visH / 2 + m.y * view.s; render();
 }
 const OP_ICONS = {
@@ -2220,11 +2250,13 @@ const OP_ICONS = {
 };
 const opModelName = (o) => { const m = (C.OP_MODELS[o.type] || []).find((x) => x[0] === C.opModel(o)); return m ? m[1] : ''; };
 function opSheet(w, o, type) {
-  const isNew = !o, run = measureRun;
+  const isNew = !o, run = measureRun, before = snapshot();
+  let saved = false;
   if (!o) {
     const m0 = C.OP_MODELS[type][0];
     o = { id: C.uid('o'), type, model: m0[0], w: m0[2], h: m0[3], d: 0.1, hinge: 0, side: 1, label: '' };
     if (type === 'J') o.pe = 1.10;
+    o._tmp = true; w.ops = w.ops || []; w.ops.push(o); // aparece no desenho enquanto edita
   }
   const nameT = o.type === 'P' ? 'Porta' : o.type === 'J' ? 'Janela' : 'Vão';
   const models = C.OP_MODELS[o.type];
@@ -2242,7 +2274,8 @@ function opSheet(w, o, type) {
       <div class="f" id="fSide"><span class="lab">Abre para</span>${segHTML('side', [[1, 'Um lado'], [-1, 'Outro']], o.side === -1 ? -1 : 1)}</div>
     </div>
     <div class="f"><label for="iLb">Identificação (opcional)</label><input id="iLb" placeholder="${o.type === 'J' ? 'ex.: J1 1,20x1,00/1,10' : o.type === 'P' ? 'ex.: P1 0,80x2,10' : 'ex.: vão 1,00 x 2,10'}" value="${esc(o.label)}"></div>
-    <p>A distância é medida pela mesma face usada na medida da parede. Use "Abre para" e "Lado da folha" para virar o símbolo.</p>
+    ${abBadge(w)}
+    <p>A distância é medida pela mesma face usada na medida da parede. O desenho atualiza enquanto você digita; use "Abre para" e "Lado da folha" para virar o símbolo.</p>
     <div class="acts">${isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
     bindSegs(sh);
     const vis = () => {
@@ -2252,7 +2285,15 @@ function opSheet(w, o, type) {
       sh.querySelector('#fSide').hidden = !((P1 && mdl !== 'correr2') || (J1 && ['abrir', 'maximar', 'basculante', 'pivotante'].includes(mdl)));
     };
     vis();
+    const live = () => { // prévia no desenho, sem gravar
+      const wd = numVal(sh, '#iW'), d = numVal(sh, '#iD');
+      if (wd > 0) o.w = wd; if (d != null && d >= 0) o.d = d; o.model = mdl;
+      o.hinge = +segVal(sh, 'hinge') || 0; o.side = +segVal(sh, 'side') || 1; render();
+    };
     ['#iW', '#iOh', '#iPe'].forEach((q) => { const el = sh.querySelector(q); if (el) el.addEventListener('input', () => { touched = true; }); });
+    ['#iW', '#iD'].forEach((q) => sh.querySelector(q).addEventListener('input', live));
+    sh.querySelectorAll('[data-seg=hinge] button, [data-seg=side] button').forEach((b) => b.addEventListener('click', () => setTimeout(live, 0)));
+    sel = { type: 'wall', id: w.id }; centerOn(w, true); live();
     sh.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
       mdl = b.dataset.m;
       sh.querySelectorAll('[data-m]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
@@ -2261,24 +2302,25 @@ function opSheet(w, o, type) {
         sh.querySelector('#iW').value = C.fmt(m[2]); sh.querySelector('#iOh').value = C.fmt(m[3]);
         const pe = sh.querySelector('#iPe'); if (pe) pe.value = C.fmt(['maximar', 'basculante'].includes(mdl) ? 1.50 : 1.10);
       }
-      vis();
+      vis(); live();
     });
-    const back = () => { closeSheet(); measureRun = run; sel = { type: 'wall', id: w.id }; render(); wallSheet(w); };
+    const undoPreview = () => { if (!saved) { const ws = JSON.parse(before); Object.assign(P, ws); } };
+    const back = () => { undoPreview(); saved = true; closeSheet(); measureRun = run; sel = { type: 'wall', id: w.id }; const w2 = P.walls.find((x) => x.id === w.id) || w; render(); wallSheet(w2); };
     const x = sh.querySelector('[data-x]'); if (x) x.onclick = back;
-    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); w.ops = w.ops.filter((q) => q !== o); changed(); back(); };
+    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { undoS.push(before); redoS = []; updTop(); w.ops = w.ops.filter((q) => q !== o); saved = true; changed(); back(); };
     sh.querySelector('[data-ok]').onclick = () => {
       const wd = numVal(sh, '#iW'), d = numVal(sh, '#iD');
       if (!wd || wd <= 0 || d == null || d < 0) { toast('Confira largura e distância.'); return; }
-      pushUndo();
+      undoS.push(before); if (undoS.length > 80) undoS.shift(); redoS = []; updTop(); saved = true; delete o._tmp;
       o.model = mdl; o.w = wd; o.d = d; o.label = sh.querySelector('#iLb').value.trim();
       const oh = numVal(sh, '#iOh'); if (oh && oh > 0) o.h = oh;
       const pe = sh.querySelector('#iPe') ? numVal(sh, '#iPe') : null; if (pe != null && pe >= 0) o.pe = pe;
       o.hinge = +segVal(sh, 'hinge') || 0; o.side = +segVal(sh, 'side') || 1;
-      w.ops = w.ops || []; if (isNew) w.ops.push(o);
+      w.ops = w.ops || []; if (!w.ops.includes(o)) w.ops.push(o);
       if (w.ops.some((q) => q !== o && o.d < q.d + q.w && q.d < o.d + o.w)) toast('Atenção: esta abertura se sobrepõe a outra na mesma parede. Confira a distância do canto A.');
       changed(); back();
     };
-  });
+  }, () => { if (!saved) { Object.assign(P, JSON.parse(before)); saved = true; sel = null; render(); } });
 }
 function verifSheet(w) {
   const nm = C.nodeMap(P), [va, vb] = C.verifEnds(P, w, nm, C.geometry(P, { cotas: false }).corners), L = C.len(C.sub(vb, va));

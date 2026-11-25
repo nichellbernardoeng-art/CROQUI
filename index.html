@@ -136,7 +136,7 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
   <h1>Levantamentos</h1>
   <p class="sub">Croqui com o dedo ou por foto, medidas da trena, cortes e saída em DXF para o AutoCAD.</p>
   <div class="cards" id="cards"></div>
-  <p><button class="linkbtn" id="bImport">Importar backup (.json)</button></p>
+  <p><button class="linkbtn" id="bImport">Importar backup (.json)</button> · <button class="linkbtn" id="bTheme">Tema claro/escuro</button></p>
   <p><button class="linkbtn" id="bInstall" hidden>Instalar o app neste celular</button></p>
   <p id="offStat" style="font-size:14px;margin:4px 0 0"></p>
   <input type="file" id="fImport" accept=".json,application/json" hidden>
@@ -861,7 +861,7 @@ const Core = (() => {
     const rm = st.top === 'telhado' ? roofModel(p) : null;
     const topT = st.top === 'laje' ? (st.lajeT || 0.10) : rm ? rm.rise + 0.3 : 0;
     let baseY = pb.y0 - 2.6 - (st.pd + topT);
-    const fm = floorModel(p);
+    const fm = floorModel(p), extW = rm ? exteriorWalls(p) : new Set();
     p.cuts.forEach((cut) => {
       const nmC = cut.name || 'A';
       // marcação na planta
@@ -887,6 +887,32 @@ const Core = (() => {
       };
       const hs = sd.hits;
       const xmin = hs[0].s - hs[0].tc / 2, xmax = hs[hs.length - 1].s + hs[hs.length - 1].tc / 2;
+      // oitão visto além do corte: parede de fachada mais próxima, paralela ao corte, até a telha
+      if (rm) {
+        const cu0 = unit(sub(cut.b, cut.a)), Lc0 = len(sub(cut.b, cut.a)), Sof = (P) => { const s0 = dot(sub(P, cut.a), cu0); return cut.flip ? Lc0 - s0 : s0; };
+        let best = null, bd = Infinity;
+        for (const w of ws) {
+          if (!extW.has(w.id) || (w.mat || 'alv') !== 'alv' || w.h || arcInfo(p, w, nm)) continue;
+          const A = nm.get(w.a), B = nm.get(w.b), u = unit(sub(B, A));
+          if (Math.abs(cross(cu0, u)) > 0.35) continue;
+          const d = dot(sub(wallMid(p, w, nm), cut.a), nv);
+          if (d > 0.05 && d < bd) { bd = d; best = w; }
+        }
+        if (best) {
+          const A = nm.get(best.a), B = nm.get(best.b), H = wallH(best, st), u = unit(sub(B, A)), Lw = len(sub(B, A));
+          const ts = [0, Lw];
+          if (st.roof.aguas !== 1) { const k = st.roof.cum === 'V' ? 'x' : 'y', tg = st.roof.cum === 'V' ? rm.xc : rm.yc; if (Math.abs(u[k]) > 1e-6) { const t = (tg - A[k]) / u[k]; if (t > 0.01 && t < Lw - 0.01) ts.splice(1, 0, t); } }
+          const pts = ts.map((t) => { const P = add(A, mul(u, t)); return { s: Sof(P), z: Math.max(H, rm.z(P)) }; });
+          for (let k = 0; k + 1 < pts.length; k++) {
+            const a = pts[k], b = pts[k + 1];
+            if (Math.max(a.z, b.z) - H < 0.02) continue;
+            prims.push({ type: 'solid', layer: 'CORTE-OITAO-HACH', pts: [P2(a.s, H), P2(b.s, H), P2(b.s, b.z), P2(a.s, a.z)] });
+            L('CORTE-OITAO', P2(a.s, a.z), P2(b.s, b.z));
+          }
+          const top = pts.reduce((m, q) => q.z > m.z ? q : m, pts[0]);
+          if (top.z - H > 0.3) { const lp = P2(top.s, H + (top.z - H) * 0.35); T('CORTE-OITAO', lp.x, lp.y, 0.10, 'OITÃO (vista)', 0); }
+        }
+      }
       // perfil do piso ao longo do corte (níveis dos ambientes e desníveis)
       const Lcut = len(sub(cut.b, cut.a)), cuu = unit(sub(cut.b, cut.a));
       const planS = (S) => add(cut.a, mul(cuu, cut.flip ? Lcut - S : S));
@@ -1038,7 +1064,7 @@ const Core = (() => {
     ['VERIFICACAO', 6], ['TEXTOS', 2], ['INFO', 8], ['CORTES', 5],
     ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31],
     ['COBOGO', 33], ['GRADIL', 8], ['VIDRO', 4], ['CORTE-COBOGO', 33], ['CORTE-COBOGO-HACH', 51], ['CORTE-GRADIL', 8], ['CORTE-VIDRO', 4],
-    ['NIVEIS', 2], ['DESNIVEL', 30], ['PROJECAO', 8, 'DASHED'], ['LINHAS', 8], ['ANOTACOES', 1]
+    ['NIVEIS', 2], ['CORTE-OITAO', 8], ['CORTE-OITAO-HACH', 254], ['DESNIVEL', 30], ['PROJECAO', 8, 'DASHED'], ['LINHAS', 8], ['ANOTACOES', 1]
   ];
   const enc = (s) => String(s).replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
   const num = (v) => (Math.round(v * 1e6) / 1e6).toString();
@@ -1194,6 +1220,7 @@ const Core = (() => {
     const ht = (st.t || 0.15) / 2;
     const bx0 = pb.x0 - ht, by0 = pb.y0 - ht, bx1 = pb.x1 + ht, by1 = pb.y1 + ht;
     const rm = st.top === 'telhado' ? roofModel(p) : null;
+    const extW = rm ? exteriorWalls(p) : new Set();
     const perimeter = (A, B) => { const e = 0.05; return (Math.abs(A.x - B.x) < e && (Math.abs(A.x - pb.x0) < e || Math.abs(A.x - pb.x1) < e)) || (Math.abs(A.y - B.y) < e && (Math.abs(A.y - pb.y0) < e || Math.abs(A.y - pb.y1) < e)); };
     // piso: base + trechos elevados conforme o nível de cada ambiente e os desníveis
     const fm = floorModel(p);
@@ -1240,16 +1267,24 @@ const Core = (() => {
       const tOf = (P) => dot(sub(P, A), u);
       const onF = (S, t) => add(S, mul(u, t - tOf(S)));
       const foot = (ta, tb) => [ta == null ? P1 : onF(P1, ta), tb == null ? P2 : onF(P1, tb), tb == null ? M2 : onF(M1, tb), ta == null ? M1 : onF(M1, ta)];
-      const ext = rm && !w.h && (w.mat || 'alv') === 'alv' && perimeter(A, B);
+      const ext = rm && !w.h && (w.mat || 'alv') === 'alv' && extW.has(w.id);
       const topFull = ext ? (P) => Math.max(H, rm.z(P)) : H;
+      // onde a cumeeira passa sobre esta parede: divide o trecho ali para o oitão subir até o topo
+      let tR = null;
+      if (ext && st.roof.aguas !== 1) { const k = st.roof.cum === 'V' ? 'x' : 'y', tg = st.roof.cum === 'V' ? rm.xc : rm.yc; if (Math.abs(u[k]) > 1e-6) { const t = (tg - A[k]) / u[k]; if (t > 0.01 && t < Lw - 0.01) tR = t; } }
+      const wallSeg = (ta, tb, z0) => {
+        const a = ta == null ? -1e9 : ta, b = tb == null ? 1e9 : tb;
+        if (tR != null && tR > a && tR < b) { prism(foot(ta, tR), z0, topFull, wc, true, wo); prism(foot(tR, tb), z0, topFull, wc, true, wo); }
+        else prism(foot(ta, tb), z0, topFull, wc, true, wo);
+      };
       const ivs = (w.ops || []).map((o) => { const s0 = o.d + refShift(p, w, w.a, nm); return { o, s0: Math.max(0, s0), s1: Math.min(Lw, s0 + o.w) }; }).filter((v) => v.s1 - v.s0 > 0.01).sort((a, b) => a.s0 - b.s0);
       let cur = null;
       for (const v of ivs) {
-        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), zb, topFull, wc, true, wo);
+        if (cur == null || v.s0 > cur + 1e-4) wallSeg(cur, v.s0, zb);
         const mo = add(A, mul(u, (v.s0 + v.s1) / 2)), zs = Math.max(zAt(add(mo, mul(n, w.t / 2 + 0.25))), zAt(add(mo, mul(n, -(w.t / 2 + 0.25)))));
         const o = v.o, pe = zs + opPe(o), top = Math.min(H, pe + opH(o)), f = foot(v.s0, v.s1);
         if (pe > zb + 1e-4) prism(f, zb, pe, wc, true, wo);
-        prism(f, top, topFull, wc, true, wo);
+        wallSeg(v.s0, v.s1, top);
         const a0 = add(A, mul(u, v.s0)), a1 = add(A, mul(u, v.s1));
         if (o.type === 'J') quad(v3(a0, pe), v3(a1, pe), v3(a1, top), v3(a0, top), C.glass, glass);
         else if (o.type === 'P') {
@@ -1260,7 +1295,7 @@ const Core = (() => {
         }
         cur = v.s1;
       }
-      prism(foot(cur, null), zb, topFull, wc, true, wo);
+      wallSeg(cur, null, zb);
     }
     // pilares
     for (const pl of p.pillars) prism(pillarCorners({ ...pl, bw: pl.bw + 0.012, bh: pl.bh + 0.012 }), zb, st.pd + (st.top === 'laje' ? (st.lajeT || 0.1) : 0) + 0.006, C.pil); // um pouco maior para não "brigar" com a parede
@@ -1281,7 +1316,7 @@ const Core = (() => {
         if (rf.aguas === 1) sheet([R(x0, y0), R(x1, y0), R(x1, y1), R(x0, y1)]);
         else if (rf.cum === 'V') { sheet([R(x0, y0), R(rm.xc, y0), R(rm.xc, y1), R(x0, y1)]); sheet([R(rm.xc, y0), R(x1, y0), R(x1, y1), R(rm.xc, y1)]); }
         else { sheet([R(x0, y0), R(x1, y0), R(x1, rm.yc), R(x0, rm.yc)]); sheet([R(x0, rm.yc), R(x1, rm.yc), R(x1, y1), R(x0, y1)]); }
-        if (rf.forro) prism(rect, st.pd, st.pd + 0.02, C.forro, false);
+        if (rf.forro) { const e = 2 * ht + 0.03; prism([{ x: bx0 + e, y: by0 + e }, { x: bx1 - e, y: by0 + e }, { x: bx1 - e, y: by1 - e }, { x: bx0 + e, y: by1 - e }], st.pd - 0.02, st.pd, C.forro, false); } // forro por dentro das paredes
       }
     }
     const zTop = st.pd + (rm ? rm.rise + 0.3 : 0.3);
@@ -1490,6 +1525,25 @@ const Core = (() => {
       return base;
     };
     return { any, at, roomOf, dls, hasRooms: polys.length > 0 };
+  }
+  /* paredes de fachada: um lado dá para dentro de um ambiente e o outro para fora da edificação */
+  function exteriorWalls(p) {
+    const nm = nodeMap(p), fs = faces(p), out = new Set();
+    const polys = fs.map((f) => f.ids.map((id) => nm.get(id)));
+    const inside = (pt) => polys.some((q) => inPoly(pt, q));
+    const bb = buildBox(p); if (!bb) return out;
+    const tolB = Math.max(0.05, 0.03 * Math.max(bb.x1 - bb.x0, bb.y1 - bb.y0));
+    for (const w of p.walls) {
+      if (w.kind === 'verif') continue;
+      const A = nm.get(w.a), B = nm.get(w.b); if (!A || !B) continue;
+      const u = unit(sub(B, A)), n = perp(u), m = wallMid(p, w, nm), off = (w.t || 0.15) / 2 + 0.2;
+      if (polys.length) { if (inside(add(m, mul(n, off))) !== inside(add(m, mul(n, -off)))) out.add(w.id); }
+      else { // sem ambiente fechado: perto da borda do conjunto
+        const near = (v, a2, b2) => Math.abs(v - a2) < tolB || Math.abs(v - b2) < tolB;
+        if ((Math.abs(A.x - B.x) < tolB && near((A.x + B.x) / 2, bb.x0, bb.x1)) || (Math.abs(A.y - B.y) < tolB && near((A.y + B.y) / 2, bb.y0, bb.y1))) out.add(w.id);
+      }
+    }
+    return out;
   }
   /* corta um polígono pela reta (a, dir): devolve os pedaços dos dois lados */
   function splitPoly(pts, a, dir) {
@@ -1993,6 +2047,7 @@ $('#bBack').onclick = backHome;
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
 $('#bTitle').onclick = () => infoSheet();
 $('#bMore').onclick = moreMenu;
+$('#bTheme').onclick = themeSheet;
 $('#bNotes').onclick = () => { if (P) notesSheet(); };
 $('#b3d').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
 $('#v3Close').onclick = () => V3.close();
@@ -2056,7 +2111,7 @@ function readColors() {
   colors = { paper: res('--paper'), ink: res('--ink'), muted: res('--muted'), grid: res('--grid'), grid2: res('--grid2'), wall: res('--wall'), accent: res('--accent'), red: res('--red'), orange: res('--orange'), cyan: res('--cyan'), mag: res('--mag'), ok: res('--ok') };
   probe.remove(); v;
 }
-const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, ANOTACOES: colors.red, TEXTOS: colors.ink, NIVEIS: colors.ink, DESNIVEL: colors.orange, PROJECAO: colors.muted, LINHAS: colors.ink }[l] || colors.ink);
+const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, 'CORTE-OITAO': colors.muted, 'CORTE-OITAO-HACH': colors.grid2, ANOTACOES: colors.red, TEXTOS: colors.ink, NIVEIS: colors.ink, DESNIVEL: colors.orange, PROJECAO: colors.muted, LINHAS: colors.ink }[l] || colors.ink);
 function resize() {
   const r = $('#stage').getBoundingClientRect();
   dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
@@ -3299,8 +3354,21 @@ function infoSheet(isNew) {
     };
   });
 }
+/* tema: automático (segue o celular), claro ou escuro; fica guardado neste aparelho */
+const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro']];
+const getTheme = () => { try { return localStorage.getItem('croqui_theme') || 'auto'; } catch (e) { return 'auto'; } };
+function applyTheme(t) {
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem('croqui_theme', t); } catch (e) {}
+  readColors(); if (P) render();
+}
+const themeHTML = () => `<div class="f"><span class="lab">Tema da tela</span>${segHTML('theme', THEMES, getTheme())}</div>`;
+const bindTheme = (sh) => sh.querySelectorAll('[data-seg=theme] button').forEach((b) => b.addEventListener('click', () => applyTheme(b.dataset.v)));
+function themeSheet() {
+  openSheet(`<h2>Tema da tela</h2>${themeHTML()}<p>"Automático" segue o modo claro/escuro do celular. A escolha vale só para este app.</p><div class="acts"><button class="pill pri" data-ok>Pronto</button></div>`, (sh) => { bindSegs(sh); bindTheme(sh); sh.querySelector('[data-ok]').onclick = closeSheet; });
+}
 function moreMenu() {
-  openSheet(`<h2>${esc(P.name)}</h2><div class="menu">
+  openSheet(`<h2>${esc(P.name)}</h2>${themeHTML()}<div class="menu">
     <button data-a="dxf"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Exportar para o AutoCAD<small>Baixa o desenho .dxf (em metros, por layers)</small></span></button>
     <button data-a="photo"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg><span>Ler croqui de uma foto<small>Desenho feito no papel vira paredes, com as medidas escritas</small></span></button>
     <button data-a="v3"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Vista 3D<small>Gire com um dedo; dois dedos para zoom e mover</small></span></button>
@@ -3314,6 +3382,7 @@ function moreMenu() {
     <button data-a="key"><svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span>Chave da API<small>Necessária só para a leitura do croqui por foto</small></span></button>
     <button data-a="help"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.7-2.5 2-2.5 4M12 17h.01"/></svg><span>Como usar</span></button></div>
     <p style="margin-top:10px">Os levantamentos ficam salvos neste celular. Faça backup (.json) de vez em quando.</p>`, (sh) => {
+    bindSegs(sh); bindTheme(sh);
     sh.querySelector('[data-a=dxf]').onclick = () => { closeSheet(); exportZip(); };
     sh.querySelector('[data-a=fit]').onclick = () => { closeSheet(); fit(); };
     sh.querySelector('[data-a=notes]').onclick = notesSheet;
@@ -3460,6 +3529,7 @@ async function exportZip() {
 }
 
 /* ---------- início ---------- */
+applyTheme(getTheme());
 readColors();
 readLocal();
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}

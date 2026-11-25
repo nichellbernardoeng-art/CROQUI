@@ -46,7 +46,13 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .top{display:flex;align-items:center;gap:2px;padding:2px 4px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
 .top .title{flex:1;text-align:left;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;min-height:44px}
 .top .iconbtn:disabled{opacity:.35}
-.top .iconbtn{width:40px}
+.top .iconbtn{width:38px}
+.nb{position:absolute;top:4px;right:1px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--red);color:#fff;font:700 11px/17px system-ui,sans-serif;text-align:center}
+.notes{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.note-it{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.35}
+.note-it small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.note-no{flex:none;width:26px;height:26px;border-radius:50%;border:2px solid var(--red);color:var(--red);display:grid;place-items:center;font-size:13px}
+textarea{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--paper);color:var(--ink);resize:vertical}
 .stage{position:relative;flex:1;background:var(--paper);overflow:hidden}
 #cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 .hint{position:absolute;left:8px;right:8px;top:8px;font-size:13px;color:var(--muted);background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:8px;padding:6px 10px;pointer-events:none;max-width:520px}
@@ -142,6 +148,7 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
     <button class="iconbtn" id="bUndo" aria-label="Desfazer"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
     <button class="iconbtn" id="bRedo" aria-label="Refazer"><svg class="i" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
     <button class="iconbtn" id="bIma" aria-label="Ímã desligado" aria-pressed="false"><svg class="i" viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0012 0V4h-4v8a2 2 0 01-4 0V4z"/><path d="M6 8h4M14 8h4"/></svg><span class="ima-t"></span></button>
+    <button class="iconbtn" id="bNotes" aria-label="Anotações" style="position:relative"><svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 10h7M9 14h7M9 18h4"/></svg><span class="nb" hidden></span></button>
     <button class="iconbtn" id="b3d" aria-label="Vista 3D"><b style="font-size:15px;letter-spacing:.02em">3D</b></button>
     <button class="iconbtn" id="bMore" aria-label="Mais opções"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
   </header>
@@ -197,14 +204,14 @@ const Core = (() => {
       v: 4, id: uid('L'), name: name || 'Levantamento',
       info: { obra: '', local: '', coord: '', data: new Date().toISOString().slice(0, 10), resp: '', obs: '' },
       settings: { t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10, roof: { aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' } },
-      nodes: [], walls: [], pillars: [], labels: [], cuts: [], lines: [],
+      nodes: [], walls: [], pillars: [], labels: [], cuts: [], lines: [], notes: [],
       createdAt: Date.now(), updatedAt: Date.now()
     };
   }
 
   /* compatibiliza levantamentos salvos em versões anteriores */
   function normalize(p) {
-    p.nodes = p.nodes || []; p.walls = p.walls || []; p.pillars = p.pillars || []; p.labels = p.labels || []; p.cuts = p.cuts || []; p.lines = p.lines || [];
+    p.nodes = p.nodes || []; p.walls = p.walls || []; p.pillars = p.pillars || []; p.labels = p.labels || []; p.cuts = p.cuts || []; p.lines = p.lines || []; p.notes = p.notes || [];
     p.info = p.info || {};
     p.settings = Object.assign({ t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10 }, p.settings || {});
     p.settings.roof = Object.assign({ aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' }, p.settings.roof || {});
@@ -385,6 +392,7 @@ const Core = (() => {
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } else mv(pl); });
     p.labels.forEach(mv);
     (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
+    (p.notes || []).forEach((n) => { if (n.pin) mv(n.pin); });
     (p.cuts || []).forEach((c) => {
       const hz = Math.abs(c.a.y - c.b.y) < 1e-6, vt = Math.abs(c.a.x - c.b.x) < 1e-6;
       mv(c.a); mv(c.b);
@@ -404,6 +412,7 @@ const Core = (() => {
     p.nodes.forEach(sc); p.pillars.forEach(sc); p.labels.forEach(sc);
     (p.cuts || []).forEach((c) => { sc(c.a); sc(c.b); });
     (p.lines || []).forEach((l) => { sc(l.a); sc(l.b); });
+    (p.notes || []).forEach((n) => { if (n.pin) sc(n.pin); });
     for (const x of p.walls) for (const o of x.ops || []) { if (x.len == null) { o.d *= k; } }
   }
 
@@ -763,6 +772,12 @@ const Core = (() => {
         levMark('NIVEIS', x0 + r * 1.35, q.y, v, hh);
       }
     }
+    // anotações de campo marcadas no desenho: balão numerado
+    (p.notes || []).forEach((nt, i) => {
+      if (!nt.pin) return;
+      prims.push({ type: 'circle', layer: 'ANOTACOES', c: { x: nt.pin.x, y: nt.pin.y }, r: 0.2, note: nt.id });
+      T('ANOTACOES', nt.pin.x, nt.pin.y, 0.16, String(i + 1), 0);
+    });
     return { prims, quads, holes, corners };
   }
   function pillarCorners(pl) {
@@ -787,7 +802,7 @@ const Core = (() => {
   function planBox(p) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); }); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); });
+    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); }); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
     return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
@@ -973,7 +988,7 @@ const Core = (() => {
   function bbox(p, geo) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); });
+    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
     if (geo) for (const q of geo.prims) { if (q.a) { inc(q.a); inc(q.b); } }
     if (x0 === Infinity) return null;
     return { x0, y0, x1, y1 };
@@ -985,7 +1000,7 @@ const Core = (() => {
     ['VERIFICACAO', 6], ['TEXTOS', 2], ['INFO', 8], ['CORTES', 5],
     ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31],
     ['COBOGO', 33], ['GRADIL', 8], ['VIDRO', 4], ['CORTE-COBOGO', 33], ['CORTE-COBOGO-HACH', 51], ['CORTE-GRADIL', 8], ['CORTE-VIDRO', 4],
-    ['NIVEIS', 2], ['DESNIVEL', 30], ['PROJECAO', 8, 'DASHED'], ['LINHAS', 8]
+    ['NIVEIS', 2], ['DESNIVEL', 30], ['PROJECAO', 8, 'DASHED'], ['LINHAS', 8], ['ANOTACOES', 1]
   ];
   const enc = (s) => String(s).replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
   const num = (v) => (Math.round(v * 1e6) / 1e6).toString();
@@ -1051,11 +1066,31 @@ const Core = (() => {
         g(0, 'TEXT'); g(8, 'INFO'); g(10, num(bb.x0)); g(20, num(y)); g(30, 0); g(40, 0.15); g(1, enc(s));
         y -= 0.3;
       }
+      const nl = notesLines(p);
+      if (nl.length) {
+        y -= 0.3;
+        for (const s of nl) { g(0, 'TEXT'); g(8, 'ANOTACOES'); g(10, num(bb.x0)); g(20, num(y)); g(30, 0); g(40, 0.15); g(1, enc(s)); y -= 0.3; }
+      }
     }
     g(0, 'ENDSEC'); g(0, 'EOF');
     return o.join('\r\n') + '\r\n';
   }
 
+  /* anotações de campo em texto (DXF e compartilhamento) */
+  const noteDate = (t) => { const d = new Date(t || Date.now()), z = (v) => String(v).padStart(2, '0'); return z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); };
+  const wrap = (s, n) => { const out = []; for (const par of String(s).split(/\n/)) { let cur = ''; for (const w of par.split(/\s+/)) { if (!w) continue; if ((cur + ' ' + w).trim().length > n && cur) { out.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); } out.push(cur); } return out; };
+  function notesLines(p, width = 90) {
+    const ns = (p.notes || []).filter((n) => (n.text || '').trim());
+    if (!ns.length) return [];
+    const out = ['ANOTACOES DE CAMPO'];
+    (p.notes || []).forEach((n, i) => {
+      if (!(n.text || '').trim()) return;
+      const w = wrap(n.text.trim(), width);
+      out.push((i + 1) + ' - ' + w[0] + (w.length === 1 ? '  (' + noteDate(n.t) + (n.pin ? '' : ', sem marca no desenho') + ')' : ''));
+      w.slice(1).forEach((s, k) => out.push('    ' + s + (k === w.length - 2 ? '  (' + noteDate(n.t) + (n.pin ? '' : ', sem marca no desenho') + ')' : '')));
+    });
+    return out;
+  }
   /* ---------- ZIP (sem compressão) ---------- */
   const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
   const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
@@ -1310,6 +1345,7 @@ const Core = (() => {
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } });
     p.labels.forEach(mv);
     (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
+    (p.notes || []).forEach((n) => { if (n.pin) mv(n.pin); });
     return T - L;
   }
   /* comprimento atual da parede medido pela mesma referência da medida (face interna, eixo ou externa) */
@@ -1432,7 +1468,7 @@ const Core = (() => {
     p.nodes = p.nodes.filter((n) => used.has(n.id));
   }
 
-  return { fmtLev, reconcileRooms, faces, faceAt, roomInfo, roomKey, arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+  return { notesLines, noteDate, fmtLev, reconcileRooms, faces, faceAt, roomInfo, roomKey, arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
 })();
 
 
@@ -1673,7 +1709,7 @@ function pushUndo() { undoS.push(snapshot()); if (undoS.length > 80) undoS.shift
 function restore(s) { const o = JSON.parse(s); Object.assign(P, o); sel = null; }
 function undo() { if (!undoS.length) return; redoS.push(snapshot()); restore(undoS.pop()); changed(); }
 function redo() { if (!redoS.length) return; undoS.push(snapshot()); restore(redoS.pop()); changed(); }
-function changed() { if (P) C.reconcileRooms(P); persist(); render(); updStatus(); updTop(); }
+function changed() { updNotesBtn(); if (P) C.reconcileRooms(P); persist(); render(); updStatus(); updTop(); }
 
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const toW = (sx, sy) => ({ x: (sx - view.ox) / view.s, y: (view.oy - sy) / view.s });
@@ -1803,6 +1839,7 @@ $('#bBack').onclick = backHome;
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
 $('#bTitle').onclick = () => infoSheet();
 $('#bMore').onclick = moreMenu;
+$('#bNotes').onclick = () => { if (P) notesSheet(); };
 $('#b3d').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
 $('#v3Close').onclick = () => V3.close();
 $('#v3Cover').onclick = () => { const on = V3.toggleCover(P); $('#v3Cover').textContent = on ? 'Tirar cobertura' : 'Pôr cobertura'; };
@@ -1841,7 +1878,7 @@ function setMode(m) {
   clearTimeout(setMode.t); setMode.t = setTimeout(() => { $('#hint').hidden = true; }, 6000);
   render();
 }
-function updTop() {
+function updTop() { updNotesBtn();
   if (!P) return;
   $('#bTitle').textContent = P.name;
   $('#bUndo').disabled = !undoS.length; $('#bRedo').disabled = !redoS.length;
@@ -1865,7 +1902,7 @@ function readColors() {
   colors = { paper: res('--paper'), ink: res('--ink'), muted: res('--muted'), grid: res('--grid'), grid2: res('--grid2'), wall: res('--wall'), accent: res('--accent'), red: res('--red'), orange: res('--orange'), cyan: res('--cyan'), mag: res('--mag'), ok: res('--ok') };
   probe.remove(); v;
 }
-const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink, NIVEIS: colors.ink, DESNIVEL: colors.orange, PROJECAO: colors.muted, LINHAS: colors.ink }[l] || colors.ink);
+const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, ANOTACOES: colors.red, TEXTOS: colors.ink, NIVEIS: colors.ink, DESNIVEL: colors.orange, PROJECAO: colors.muted, LINHAS: colors.ink }[l] || colors.ink);
 function resize() {
   const r = $('#stage').getBoundingClientRect();
   dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
@@ -1928,9 +1965,15 @@ function paint() {
       g.beginPath(); g.arc(c.x, c.y, q.r * view.s, -q.a0 * Math.PI / 180, -q.a1 * Math.PI / 180, true); g.stroke();
     } else if (q.type === 'solid') {
       g.fillStyle = col; poly(q.pts); g.fill();
+    } else if (q.type === 'circle' && q.note) {
+      const c = toS(q.c), r = Math.max(11, q.r * view.s), on = sel && sel.type === 'note' && sel.id === q.note;
+      g.fillStyle = on ? colors.red : '#fff'; g.strokeStyle = colors.red; g.lineWidth = 2; g.beginPath(); g.arc(c.x, c.y, r, 0, 7); g.fill(); g.stroke();
+      const i = P.notes.findIndex((n) => n.id === q.note) + 1;
+      g.fillStyle = on ? '#fff' : colors.red; g.font = `700 ${Math.round(r * 1.05)}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i), c.x, c.y + .5);
     } else if (q.type === 'circle') {
       const c = toS(q.c); g.strokeStyle = col; g.lineWidth = 1; g.beginPath(); g.arc(c.x, c.y, Math.max(2, q.r * view.s), 0, 7); g.stroke();
     } else if (q.type === 'text') {
+      if (q.layer === 'ANOTACOES') continue;
       const px = Math.max(10, Math.min(36, q.h * view.s * (q.layer === 'TEXTOS' ? 1 : 1.15)));
       if (q.h * view.s < 3.5 && q.layer !== 'TEXTOS') continue;
       const s = toS(q); g.save(); g.translate(s.x, s.y); g.rotate(-q.rot * Math.PI / 180);
@@ -2157,6 +2200,7 @@ const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX
 const hitPillar = (w) => P.pillars.find((pl) => Math.hypot(pl.x - w.x, pl.y - w.y) < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s));
 const labelPos = (lb) => { const ri = lb.room ? C.roomInfo(P, lb.room) : null; return ri ? { x: ri.c.x + (lb.ox || 0), y: ri.c.y + (lb.oy || 0) } : { x: lb.x, y: lb.y }; };
 const hitLabel = (w) => P.labels.find((lb) => { const q = labelPos(lb); return Math.abs(q.x - w.x) < Math.max(28 / view.s, (lb.text.length * (lb.h || .2) * .32)) && Math.abs(q.y - w.y) < Math.max(20 / view.s, (lb.h || .2) * 1.6); });
+const hitNote = (w) => (P.notes || []).find((n) => n.pin && Math.hypot(n.pin.x - w.x, n.pin.y - w.y) < Math.max(16 / view.s, 0.22));
 const hitLine = (w) => { let best = null, bd = 16 / view.s; for (const c of P.lines || []) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 const hitCut = (w) => { let best = null, bd = 16 / view.s; for (const c of P.cuts) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 
@@ -2226,10 +2270,11 @@ cv.addEventListener('pointerdown', (e) => {
     drawing = { start: st, end: st, path: [p] }; render();
   } else if (mode === 'editar' || mode === 'pilar') {
     const n = mode === 'editar' ? nearestNode(w, 22 / view.s) : null;
-    const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null;
+    const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null, hnt = mode === 'editar' ? hitNote(w) : null;
     let hb = null; // número da parede: tocar seleciona, arrastar curva a parede
     if (mode === 'editar' && !hp && !n) { const nm = C.nodeMap(P); for (const x of C.paredes(P)) { const m = C.wallMid(P, x, nm); if (Math.hypot(m.x - w.x, m.y - w.y) < 18 / view.s) { hb = x; break; } } }
-    if (hp) drag = { type: 'pillar', o: hp, moved: false };
+    if (hnt) drag = { type: 'note', o: hnt.pin, note: hnt, moved: false };
+    else if (hp) drag = { type: 'pillar', o: hp, moved: false };
     else if (n) drag = { type: 'node', o: n, moved: false };
     else if (hb) drag = { type: 'bend', o: hb, moved: false };
     else if (hl) drag = { type: 'label', o: hl, moved: false };
@@ -2346,6 +2391,15 @@ function endPtr(e) {
   if (pinch) { if (ptrs.size < 2) { pinch = null; tapInfo = null; panning = null; } return; }
   const wasTap = tapInfo && Math.hypot(p.x - tapInfo.x, p.y - tapInfo.y) <= 8 && Date.now() - tapInfo.t < 600;
   tapInfo = null;
+  if (pinFor) {
+    if (wasTap && e.type !== 'pointercancel') {
+      drawing = null; drag = null; panning = null;
+      const nt = pinFor; pinFor = null; pushUndo(); nt.pin = toW(p.x, p.y); $('#hint').textContent = HINTS[mode] || '';
+      sel = { type: 'note', id: nt.id }; changed(); toast('Anotação ' + (P.notes.indexOf(nt) + 1) + ' marcada. No modo Editar dá para arrastar o balão.');
+      return;
+    }
+    drawing = null; drag = null;
+  }
   if (drawing) {
     const d = drawing; drawing = null;
     const a = toS(d.start.pt), b = toS(d.end.pt);
@@ -2391,6 +2445,7 @@ function endPtr(e) {
       return;
     }
     if (dg.type === 'label') { sel = { type: 'label', id: dg.o.id }; render(); labelSheet(dg.o); return; }
+    if (dg.type === 'note') { sel = { type: 'note', id: dg.note.id }; render(); noteSheet(dg.note); return; }
     if (dg.type === 'node' || dg.type === 'bend') { tapSelect(p); return; }
   }
   if (panning) {
@@ -2436,6 +2491,7 @@ function wallCandidates(w) {
 }
 function tapSelect(p) {
   const w = toW(p.x, p.y);
+  const hnt = hitNote(w); if (hnt) { sel = { type: 'note', id: hnt.id }; render(); noteSheet(hnt); return; }
   const hp = hitPillar(w); if (hp) { sel = { type: 'pillar', id: hp.id }; render(); return; }
   const hc = hitCut(w); if (hc) { sel = { type: 'cut', id: hc.id }; render(); cutSheet(hc); return; }
   const hn = hitLine(w); if (hn) { sel = { type: 'line', id: hn.id }; render(); lineSheet(hn); return; }
@@ -2803,6 +2859,60 @@ function cutSheet(cut, isNew) {
     sh.querySelector('[data-ok]').onclick = () => { save(); sel = null; closeSheet(); };
   }, () => { sel = null; render(); });
 }
+/* ---------- anotações de campo ---------- */
+let pinFor = null;
+const NOTE_TAGS = ['Fissura', 'Trinca', 'Infiltração', 'Umidade/mofo', 'Desplacamento', 'Instalação elétrica', 'Instalação hidráulica', 'Esquadria danificada', 'Piso danificado', 'Cobertura/telhado', 'Foto nº', 'Medir de novo'];
+function updNotesBtn() {
+  const b = $('#bNotes'); if (!b || !P) return;
+  const n = (P.notes || []).filter((x) => (x.text || '').trim()).length;
+  b.querySelector('.nb').textContent = n ? String(n) : ''; b.querySelector('.nb').hidden = !n;
+}
+function askPin(nt) {
+  pinFor = nt; closeSheet();
+  $('#hint').textContent = 'Toque no desenho onde fica a anotação ' + (P.notes.indexOf(nt) + 1) + ' (dá para mover e dar zoom antes).';
+  toast('Toque no lugar da anotação no desenho.');
+}
+function notesSheet() {
+  const ns = P.notes || [];
+  const list = ns.map((n, i) => `<button class="note-it" data-n="${esc(n.id)}"><b class="note-no">${i + 1}</b><span>${esc(n.text).replace(/\n/g, '<br>')}<small>${C.noteDate(n.t)}${n.pin ? ' · marcada no desenho' : ' · sem marca no desenho'}</small></span></button>`).join('');
+  openSheet(`<h2>Anotações de campo</h2>
+    <div class="f"><label for="iNote">Nova anotação</label><textarea id="iNote" rows="3" placeholder="Escreva ou use o microfone do teclado para ditar"></textarea></div>
+    <div class="chips" style="margin-bottom:10px">${NOTE_TAGS.map((t) => `<button class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    <div class="acts" style="margin-top:0"><button class="pill" data-ok>Salvar</button><button class="pill pri" data-pin>Salvar e marcar no desenho</button></div>
+    ${ns.length ? `<div class="notes">${list}</div>` : '<p>Nenhuma anotação ainda. Elas saem numeradas no desenho e listadas no DXF, abaixo da planta.</p>'}
+    ${ns.length ? '<div class="acts"><button class="pill" data-share>Compartilhar / copiar anotações</button></div>' : ''}`, (sh) => {
+    const ta = sh.querySelector('#iNote');
+    sh.querySelectorAll('[data-tag]').forEach((b) => b.onclick = () => { const t = b.dataset.tag; ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + t + (t === 'Foto nº' ? ' ' : ': '); ta.focus(); });
+    const add = () => { const t = ta.value.trim(); if (!t) { toast('Escreva a anotação primeiro.'); return null; } pushUndo(); const nt = { id: C.uid('nt'), text: t, t: Date.now(), pin: null }; P.notes.push(nt); changed(); return nt; };
+    sh.querySelector('[data-ok]').onclick = () => { if (add()) { toast('Anotação salva.'); notesSheet(); } };
+    sh.querySelector('[data-pin]').onclick = () => { const nt = add(); if (nt) askPin(nt); };
+    sh.querySelectorAll('[data-n]').forEach((b) => b.onclick = () => { const nt = P.notes.find((x) => x.id === b.dataset.n); if (nt) noteSheet(nt); });
+    const shb = sh.querySelector('[data-share]'); if (shb) shb.onclick = shareNotes;
+  });
+}
+function noteSheet(nt) {
+  const i = P.notes.indexOf(nt) + 1;
+  openSheet(`<h2>Anotação ${i}</h2>
+    <div class="f"><label for="iNote">Texto</label><textarea id="iNote" rows="4">${esc(nt.text)}</textarea></div>
+    <p style="margin-top:0">${C.noteDate(nt.t)}${nt.pin ? ' · marcada no desenho (balão ' + i + ')' : ' · sem marca no desenho'}</p>
+    <div class="acts" style="margin-top:0"><button class="pill" data-pin>${nt.pin ? 'Mudar lugar no desenho' : 'Marcar no desenho'}</button>${nt.pin ? '<button class="pill" data-unpin>Tirar do desenho</button>' : ''}</div>
+    <div class="acts"><button class="pill danger" data-del>Excluir</button><button class="pill" data-list>Todas</button><button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    const ta = sh.querySelector('#iNote');
+    const save = () => { const t = ta.value.trim(); if (t && t !== nt.text) { pushUndo(); nt.text = t; changed(); } };
+    sh.querySelector('[data-ok]').onclick = () => { save(); sel = null; closeSheet(); render(); };
+    sh.querySelector('[data-list]').onclick = () => { save(); notesSheet(); };
+    sh.querySelector('[data-pin]').onclick = () => { save(); askPin(nt); };
+    const up = sh.querySelector('[data-unpin]'); if (up) up.onclick = () => { pushUndo(); nt.pin = null; sel = null; changed(); noteSheet(nt); };
+    sh.querySelector('[data-del]').onclick = () => { pushUndo(); P.notes = P.notes.filter((x) => x !== nt); sel = null; closeSheet(); changed(); toast('Anotação excluída. Os números foram refeitos.'); };
+    if (nt.pin) setTimeout(() => centerSeg(nt.pin, nt.pin, true, true), 30);
+  }, () => { sel = null; render(); });
+}
+async function shareNotes() {
+  const i = P.info || {};
+  const txt = [P.name, i.obra && 'Obra: ' + i.obra, i.local && 'Local: ' + i.local, ''].filter((x) => x !== undefined && x !== false && x !== null).join('\n') + '\n' + C.notesLines(P, 200).join('\n');
+  try { if (navigator.share) { await navigator.share({ title: 'Anotações - ' + P.name, text: txt }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(txt); toast('Anotações copiadas. Cole no WhatsApp, e-mail ou Word.'); } catch (e) { toast('Não foi possível copiar nesta tela.'); }
+}
 let lastLineType = 'desnivel';
 const LINE_TYPES = [['desnivel', 'Desnível'], ['projecao', 'Projeção'], ['outra', 'Outra linha']];
 const levStr = (v) => v == null ? '' : C.fmt(v).replace(/^(?!-)/, v > 0 ? '+' : '');
@@ -2916,6 +3026,7 @@ function moreMenu() {
     <button data-a="dxf"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Exportar para o AutoCAD<small>Baixa o desenho .dxf (em metros, por layers)</small></span></button>
     <button data-a="photo"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg><span>Ler croqui de uma foto<small>Desenho feito no papel vira paredes, com as medidas escritas</small></span></button>
     <button data-a="v3"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Vista 3D<small>Gire com um dedo; dois dedos para zoom e mover</small></span></button>
+    <button data-a="notes"><svg class="i" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 10h7M9 14h7M9 18h4"/></svg><span>Anotações de campo<small>Observações numeradas, marcadas no desenho e listadas no DXF</small></span></button>
     <button data-a="fit"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Enquadrar planta</span></button>
     <button data-a="all"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="8"/><rect x="4" y="14" width="16" height="7"/></svg><span>Ver planta e cortes</span></button>
     <button data-a="info"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Dados do levantamento<small>Obra, endereço, coordenadas, responsável, padrões</small></span></button>
@@ -2927,6 +3038,7 @@ function moreMenu() {
     <p style="margin-top:10px">Os levantamentos ficam salvos neste celular. Faça backup (.json) de vez em quando.</p>`, (sh) => {
     sh.querySelector('[data-a=dxf]').onclick = () => { closeSheet(); exportZip(); };
     sh.querySelector('[data-a=fit]').onclick = () => { closeSheet(); fit(); };
+    sh.querySelector('[data-a=notes]').onclick = notesSheet;
     sh.querySelector('[data-a=v3]').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
     sh.querySelector('[data-a=clear]').onclick = () => { closeSheet(); clearDrawing(); };
     sh.querySelector('[data-a=photo]').onclick = () => { closeSheet(); photoSheet(); };
@@ -2950,6 +3062,7 @@ function helpSheet() {
     <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
     <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
     <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Arraste o texto no modo Editar para reposicionar.</li>
+    <li><b>Anotações (botão do bloco de notas no topo):</b> escreva ou dite (microfone do teclado) observações do levantamento. Os botões rápidos (Fissura, Infiltração, Foto nº…) adiantam o texto. "Salvar e marcar no desenho" pede um toque no lugar: aparece um balão vermelho numerado. Toque no balão para ver ou editar; no modo Editar, arraste-o. No DXF, os balões e a lista numerada saem no layer ANOTACOES. "Compartilhar" manda o texto para WhatsApp, e-mail etc.</li>
     <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
     <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: informe o nível do lado A e do lado B (marcados no desenho) e o app mostra o desnível em cm; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>
     <li><b>Sem internet:</b> na versão instalada pelo GitHub, abra o app uma vez com internet; a faixa verde "Pronto para usar sem internet" confirma. Depois funciona no modo avião.</li>
@@ -2958,9 +3071,9 @@ function helpSheet() {
     <li><b>3D (botão no topo):</b> mostra o levantamento em 3D com portas, janelas, pilares e cobertura. Um dedo gira; dois dedos dão zoom e movem. "Tirar cobertura" mostra o interior.</li>
     <li><b>Apagar todo o desenho (menu ⋯):</b> limpa o croqui de uma vez; Desfazer recupera.</li>
     <li><b>Conferir:</b> lista as medidas que não batem com o desenho e as diagonais.</li>
-    <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, NIVEIS, DESNIVEL, PROJECAO (tracejada), LINHAS, INFO.</li></ol>
+    <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, NIVEIS, DESNIVEL, PROJECAO (tracejada), LINHAS, ANOTACOES, INFO.</li></ol>
     <p>Dois dedos: mover e zoom. Desfazer e refazer no topo. No modo Editar, arraste pontos, pilares e textos.</p>
-    <p>Croqui de Campo · versão 1.1</p>
+    <p>Croqui de Campo · versão 1.2</p>
     <div class="acts"><button class="pill pri" data-ok>Entendi</button></div>`, (sh) => { sh.querySelector('[data-ok]').onclick = closeSheet; });
 }
 

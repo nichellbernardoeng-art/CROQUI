@@ -2199,7 +2199,16 @@ let pinch = null, drag = null, panning = null, tapInfo = null;
 const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const hitPillar = (w) => P.pillars.find((pl) => Math.hypot(pl.x - w.x, pl.y - w.y) < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s));
 const labelPos = (lb) => { const ri = lb.room ? C.roomInfo(P, lb.room) : null; return ri ? { x: ri.c.x + (lb.ox || 0), y: ri.c.y + (lb.oy || 0) } : { x: lb.x, y: lb.y }; };
-const hitLabel = (w) => P.labels.find((lb) => { const q = labelPos(lb); return Math.abs(q.x - w.x) < Math.max(28 / view.s, (lb.text.length * (lb.h || .2) * .32)) && Math.abs(q.y - w.y) < Math.max(20 / view.s, (lb.h || .2) * 1.6); });
+const hitLabel = (w) => {
+  let best = null, bd = Infinity;
+  for (const lb of P.labels) {
+    const q = labelPos(lb), h = lb.h || .2, nl = 1 + (lb.room && lb.showArea !== false ? 0.6 : 0) + (lb.obs ? 0.55 : 0) + (lb.level != null ? 0.6 : 0);
+    const hw = Math.max(30 / view.s, Math.max((lb.text || '').length, (lb.obs || '').length * 0.55, 8) * h * .34), hh = Math.max(24 / view.s, h * nl * 0.8);
+    const dx = Math.abs(q.x - w.x), dy = Math.abs(q.y - w.y);
+    if (dx < hw && dy < hh) { const d = dx / hw + dy / hh; if (d < bd) { bd = d; best = lb; } }
+  }
+  return best;
+};
 const hitNote = (w) => (P.notes || []).find((n) => n.pin && Math.hypot(n.pin.x - w.x, n.pin.y - w.y) < Math.max(16 / view.s, 0.22));
 const hitLine = (w) => { let best = null, bd = 16 / view.s; for (const c of P.lines || []) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 const hitCut = (w) => { let best = null, bd = 16 / view.s; for (const c of P.cuts) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
@@ -2268,6 +2277,9 @@ cv.addEventListener('pointerdown', (e) => {
     const st = snap(p.x, p.y, null);
     if (mode === 'diag' && !st.nodeId) { drawing = null; panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy }; return; }
     drawing = { start: st, end: st, path: [p] }; render();
+  } else if (mode === 'texto' && (hitNote(w) || hitLabel(w))) {
+    const hnt = hitNote(w);
+    drag = hnt ? { type: 'note', o: hnt.pin, note: hnt, moved: false } : { type: 'label', o: hitLabel(w), moved: false };
   } else if (mode === 'editar' || mode === 'pilar') {
     const n = mode === 'editar' ? nearestNode(w, 22 / view.s) : null;
     const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null, hnt = mode === 'editar' ? hitNote(w) : null;
@@ -2391,6 +2403,17 @@ function endPtr(e) {
   if (pinch) { if (ptrs.size < 2) { pinch = null; tapInfo = null; panning = null; } return; }
   const wasTap = tapInfo && Math.hypot(p.x - tapInfo.x, p.y - tapInfo.y) <= 8 && Date.now() - tapInfo.t < 600;
   tapInfo = null;
+  if (labelFor) {
+    if (wasTap && e.type !== 'pointercancel') {
+      drawing = null; drag = null; panning = null;
+      const lb = labelFor; labelFor = null; pushUndo(); const w = toW(p.x, p.y);
+      const ri = lb.room ? C.roomInfo(P, lb.room) : null;
+      if (ri) { lb.ox = w.x - ri.c.x; lb.oy = w.y - ri.c.y; } else { lb.x = w.x; lb.y = w.y; }
+      $('#hint').textContent = HINTS[mode] || ''; sel = null; changed(); toast('Texto movido.');
+      return;
+    }
+    drawing = null; drag = null;
+  }
   if (pinFor) {
     if (wasTap && e.type !== 'pointercancel') {
       drawing = null; drag = null; panning = null;
@@ -2860,7 +2883,7 @@ function cutSheet(cut, isNew) {
   }, () => { sel = null; render(); });
 }
 /* ---------- anotações de campo ---------- */
-let pinFor = null;
+let pinFor = null, labelFor = null;
 const NOTE_TAGS = ['Fissura', 'Trinca', 'Infiltração', 'Umidade/mofo', 'Desplacamento', 'Instalação elétrica', 'Instalação hidráulica', 'Esquadria danificada', 'Piso danificado', 'Cobertura/telhado', 'Foto nº', 'Medir de novo'];
 function updNotesBtn() {
   const b = $('#bNotes'); if (!b || !P) return;
@@ -2963,10 +2986,17 @@ function labelSheet(lb, auto) {
     <div class="f"><span class="lab">Área interna</span><p style="margin:10px 0 0;color:var(--ink)">${ri && scaled ? '<b>' + C.fmt(ri.area) + ' m²</b>' : 'aparece após a 1ª medida'}</p></div></div>` : ''}
     <div class="f"><span class="lab">Tamanho</span>${segHTML('h', [['0.12', 'Pequeno'], ['0.2', 'Médio'], ['0.3', 'Grande']], String(lb.h || 0.2))}</div>
     ${auto ? '<p>O texto fica no centro do ambiente e acompanha as mudanças de medida. Para não perguntar mais ao fechar ambientes, use "Não perguntar".</p>' : ''}
+    ${!isNew ? `<div class="acts" style="margin-top:0"><button class="pill" data-mv>Mover texto</button>${lb.room && (lb.ox || lb.oy) ? '<button class="pill" data-ctr>Voltar ao centro</button>' : ''}</div><p style="margin-top:6px">Ou arraste o texto direto no desenho (ferramentas Texto ou Editar).</p>` : ''}
     <div class="acts">${auto ? '<button class="pill" data-never>Não perguntar</button><button class="pill" data-x>Pular</button>' : isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
     bindSegs(sh);
     const inp = sh.querySelector('#iTx');
-    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    if (isNew) setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    const mvb = sh.querySelector('[data-mv]'); if (mvb) mvb.onclick = () => {
+      labelFor = lb; sel = { type: 'label', id: lb.id }; closeSheet(); render();
+      $('#hint').textContent = 'Toque no novo lugar do texto "' + (lb.text || 'nível') + '" (dá para mover e dar zoom antes).';
+      toast('Toque no novo lugar do texto.');
+    };
+    const ctb = sh.querySelector('[data-ctr]'); if (ctb) ctb.onclick = () => { pushUndo(); lb.ox = 0; lb.oy = 0; changed(); closeSheet(); };
     sh.querySelectorAll('[data-rn]').forEach((b) => b.onclick = () => {
       const base = b.dataset.rn, same = P.labels.filter((q) => q !== lb && q.text && q.text.replace(/\s+\d+$/, '') === base).length;
       inp.value = same ? `${base} ${String(same + 1).padStart(2, '0')}` : base; inp.focus();
@@ -3061,7 +3091,7 @@ function helpSheet() {
     <li><b>Selecionar parede:</b> toque nela ou no número dela. Se pegar a vizinha, toque de novo no mesmo lugar para alternar. Com a folha aberta, tocar em outra parede no desenho já abre a folha dela.</li>
     <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
     <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
-    <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Arraste o texto no modo Editar para reposicionar.</li>
+    <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Para mudar o lugar do texto, arraste-o com a ferramenta Texto ou Editar, ou toque nele e use "Mover texto".</li>
     <li><b>Anotações (botão do bloco de notas no topo):</b> escreva ou dite (microfone do teclado) observações do levantamento. Os botões rápidos (Fissura, Infiltração, Foto nº…) adiantam o texto. "Salvar e marcar no desenho" pede um toque no lugar: aparece um balão vermelho numerado. Toque no balão para ver ou editar; no modo Editar, arraste-o. No DXF, os balões e a lista numerada saem no layer ANOTACOES. "Compartilhar" manda o texto para WhatsApp, e-mail etc.</li>
     <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
     <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: informe o nível do lado A e do lado B (marcados no desenho) e o app mostra o desnível em cm; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>

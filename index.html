@@ -69,6 +69,8 @@ textarea{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:
 .tools button[aria-pressed=true]{color:var(--accent);font-weight:600;box-shadow:inset 0 3px 0 var(--accent)}
 /* folha inferior */
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.08)}
+.xclose{position:sticky;top:0;float:right;z-index:3;width:44px;height:44px;margin:-4px -8px -44px 0;border-radius:22px;background:var(--panel);color:var(--muted);font-size:20px;line-height:44px;text-align:center}
+.xclose:active{background:var(--line)}
 #sheet{position:fixed;left:0;right:0;bottom:0;max-height:60vh;overflow:auto;background:var(--panel);border-radius:16px 16px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.2);padding:8px 16px calc(16px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
 #sheet .grab{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;padding:2px 0 8px;min-height:30px}
 #sheet .grab span{width:40px;height:4px;border-radius:2px;background:var(--line)}
@@ -1931,24 +1933,40 @@ let sheetClose = null;
 function openSheet(html, bind, onClose) {
   const sh = $('#sheet');
   $('#fbar').hidden = true;
-  sh.innerHTML = '<button type="button" class="grab" aria-label="Recolher ou abrir a folha"><span></span><em>▾ ver o desenho</em></button>' + html;
+  sh.innerHTML = '<button type="button" class="xclose" aria-label="Fechar">✕</button><button type="button" class="grab" aria-label="Recolher ou abrir a folha"><span></span><em>▾ ver o desenho</em></button>' + html;
   sh.classList.remove('min');
   sh.hidden = false; $('#scrim').hidden = false;
+  sh.querySelector('.xclose').onclick = dismissSheet;
+  navPush('sheet');
   sh.querySelector('.grab').onclick = () => { const m = sh.classList.toggle('min'); sh.querySelector('.grab em').textContent = m ? '▴ abrir a folha' : '▾ ver o desenho'; sh.scrollTop = 0; };
   sheetClose = onClose || null;
   bind && bind(sh);
   sh.scrollTop = 0;
 }
 function closeSheet() {
+  const wasOpen = !$('#sheet').hidden;
   $('#sheet').hidden = true; $('#scrim').hidden = true; $('#sheet').innerHTML = '';
   const f = sheetClose; sheetClose = null; f && f();
+  if (wasOpen) navPopLater('sheet');
 }
-$('#scrim').addEventListener('click', (e) => { // fecha a folha e já seleciona o que foi tocado no desenho
-  closeSheet();
-  if (!P || $('#editor').hidden) return;
-  const r = cv.getBoundingClientRect(), p = { x: e.clientX - r.left, y: e.clientY - r.top };
-  if (p.x < 0 || p.y < 0 || p.x > r.width || p.y > r.height) return;
-  if (mode === 'editar' || mode === 'parede' || mode === 'diag' || mode === 'pilar') setTimeout(() => tapSelect(p), 0);
+/* fechar a folha sem fazer mais nada: tira a seleção (tocar fora, ✕ ou o botão voltar do celular) */
+function dismissSheet() { closeSheet(); if (sel) { sel = null; if (P) render(); } lastTap = null; }
+$('#scrim').addEventListener('click', dismissSheet);
+
+/* botão "voltar" do celular: fecha a folha / o 3D / a escolha de lugar; no desenho, volta para a lista; na lista, sai */
+let navSkip = 0;
+const navState = () => (history.state && history.state.croqui) || null;
+function navPush(v) { try { if (navState() === v) return; history.pushState({ croqui: v }, ''); } catch (e) {} }
+function navPopLater(v) { setTimeout(() => { try { if (navState() !== v) return; if (v === 'sheet' && !$('#sheet').hidden) return; if (v === 'over' && !$('#v3d').hidden) return; navSkip++; history.back(); } catch (e) {} }, 0); }
+window.addEventListener('popstate', () => {
+  if (navSkip > 0) { navSkip--; return; }
+  if (!$('#sheet').hidden) { const f = sheetClose; sheetClose = null; $('#sheet').hidden = true; $('#scrim').hidden = true; $('#sheet').innerHTML = ''; f && f(); if (sel) { sel = null; render(); } return; }
+  if (!$('#v3d').hidden) { V3.close(); return; }
+  if (P && !$('#editor').hidden) {
+    if (moveFor || pinFor) { moveFor = null; pinFor = null; $('#hint').textContent = HINTS[mode] || ''; sel = null; render(); toast('Cancelado.'); navPush('editor'); return; }
+    if (sel) { sel = null; render(); navPush('editor'); return; }
+    backHome(true);
+  }
 });
 function confirmSheet(title, text, okLabel, onOk) {
   openSheet(`<h2>${esc(title)}</h2><p>${esc(text)}</p><div class="acts"><button class="pill" data-x>Cancelar</button><button class="pill pri" data-ok>${esc(okLabel)}</button></div>`, (sh) => {
@@ -2037,19 +2055,24 @@ function openProject(id, fresh) {
   P = mem[id]; if (!P) return; C.normalize(P);
   undoS = []; redoS = []; sel = null; measureRun = false;
   $('#home').hidden = true; $('#editor').hidden = false;
+  navPush('editor');
   setMode(P.nodes.length ? 'editar' : 'parede');
   resize();
   fit();
   updStatus(); updTop();
 }
-function backHome() { closeSheet(); V3.close(); if (P) { persist(); writeLocal(); } P = null; $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
+function backHome(fromNav) {
+  if (!fromNav) { const st = navState(), n = st === 'sheet' || st === 'over' ? 2 : st === 'editor' ? 1 : 0; if (n) { navSkip++; try { history.go(-n); } catch (e) {} } }
+  sheetClose = null; $('#sheet').hidden = true; $('#scrim').hidden = true; $('#sheet').innerHTML = ''; V3.close(); if (P) { persist(); writeLocal(); } P = null; $('#editor').hidden = true; $('#home').hidden = false; renderHome(); }
 $('#bBack').onclick = backHome;
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
 $('#bTitle').onclick = () => infoSheet();
 $('#bMore').onclick = moreMenu;
 $('#bTheme').onclick = themeSheet;
 $('#bNotes').onclick = () => { if (P) notesSheet(); };
-$('#b3d').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
+function open3D() { closeSheet(); setTimeout(() => { const err = V3.open(P); if (err) toast(err); else navPush('over'); }, 0); }
+$('#b3d').onclick = open3D;
+$('#v3Close').addEventListener('click', () => navPopLater('over'));
 $('#v3Close').onclick = () => V3.close();
 $('#v3Cover').onclick = () => { const on = V3.toggleCover(P); $('#v3Cover').textContent = on ? 'Tirar cobertura' : 'Pôr cobertura'; };
 $('#v3Reset').onclick = () => V3.reset(P);
@@ -3386,7 +3409,7 @@ function moreMenu() {
     sh.querySelector('[data-a=dxf]').onclick = () => { closeSheet(); exportZip(); };
     sh.querySelector('[data-a=fit]').onclick = () => { closeSheet(); fit(); };
     sh.querySelector('[data-a=notes]').onclick = notesSheet;
-    sh.querySelector('[data-a=v3]').onclick = () => { closeSheet(); const err = V3.open(P); if (err) toast(err); };
+    sh.querySelector('[data-a=v3]').onclick = open3D;
     sh.querySelector('[data-a=clear]').onclick = () => { closeSheet(); clearDrawing(); };
     sh.querySelector('[data-a=photo]').onclick = () => { closeSheet(); photoSheet(); };
     sh.querySelector('[data-a=all]').onclick = () => { closeSheet(); fitAll(); };
@@ -3411,6 +3434,7 @@ function helpSheet() {
     <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Para mudar o lugar do texto, arraste-o com a ferramenta Texto ou Editar, ou toque nele e use "Mover texto".</li>
     <li><b>Anotações (botão do bloco de notas no topo):</b> escreva ou dite (microfone do teclado) observações do levantamento. Os botões rápidos (Fissura, Infiltração, Foto nº…) adiantam o texto. "Salvar e marcar no desenho" pede um toque no lugar: aparece um balão vermelho numerado. Toque no balão para ver ou editar; no modo Editar, arraste-o. No DXF, os balões e a lista numerada saem no layer ANOTACOES. "Compartilhar" manda o texto para WhatsApp, e-mail etc.</li>
     <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
+    <li><b>Sair da edição:</b> toque fora da folha, no ✕ do canto dela ou no botão voltar do celular. Isso só fecha e tira a seleção, sem selecionar outra coisa. O voltar do celular fecha folha, 3D e seleção; no desenho, volta para a lista.</li>
     <li><b>Selecionar:</b> toque em qualquer objeto (parede, texto, nível, linha, corte, pilar, anotação) em qualquer ferramenta. Se vier o objeto errado, toque de novo no mesmo lugar: o app passa para o próximo que está ali. O selecionado fica com contorno azul tracejado.</li>
     <li><b>Mover textos e níveis:</b> arraste com as ferramentas Texto ou Editar (os níveis do desnível também com a ferramenta Linha), ou toque no objeto e use "Mover texto" / "Mover nível". Nível afastado da linha ganha uma linha de chamada.</li>
     <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: a folha mostra um esquema com o lado A e o lado B (as letras também aparecem no desenho); informe o nível de cada lado e o app mostra o desnível em cm. O corte que atravessar a linha mostra o degrau e os níveis do piso; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>

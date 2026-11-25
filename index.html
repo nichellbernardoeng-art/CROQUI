@@ -48,6 +48,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .top .iconbtn:disabled{opacity:.35}
 .top .iconbtn{width:38px}
 .nb{position:absolute;top:4px;right:1px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--red);color:#fff;font:700 11px/17px system-ui,sans-serif;text-align:center}
+.scheme{display:flex;gap:12px;align-items:center;margin:4px 0 12px;font-size:14px;line-height:1.35}
+.scheme svg{flex:none}
 .notes{display:flex;flex-direction:column;gap:8px;margin-top:14px}
 .note-it{display:flex;gap:10px;align-items:flex-start;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.35}
 .note-it small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
@@ -391,7 +393,7 @@ const Core = (() => {
     const mv = (o) => { const x = T[0] * o.x + T[1] * o.y + T[2], y = T[3] * o.x + T[4] * o.y + T[5]; o.x = x; o.y = y; };
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } else mv(pl); });
     p.labels.forEach(mv);
-    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
+    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); if (l.p1) mv(l.p1); if (l.p2) mv(l.p2); });
     (p.notes || []).forEach((n) => { if (n.pin) mv(n.pin); });
     (p.cuts || []).forEach((c) => {
       const hz = Math.abs(c.a.y - c.b.y) < 1e-6, vt = Math.abs(c.a.x - c.b.x) < 1e-6;
@@ -411,7 +413,7 @@ const Core = (() => {
     const sc = (o) => { o.x = O.x + (o.x - O.x) * k; o.y = O.y + (o.y - O.y) * k; };
     p.nodes.forEach(sc); p.pillars.forEach(sc); p.labels.forEach(sc);
     (p.cuts || []).forEach((c) => { sc(c.a); sc(c.b); });
-    (p.lines || []).forEach((l) => { sc(l.a); sc(l.b); });
+    (p.lines || []).forEach((l) => { sc(l.a); sc(l.b); if (l.p1) sc(l.p1); if (l.p2) sc(l.p2); });
     (p.notes || []).forEach((n) => { if (n.pin) sc(n.pin); });
     for (const x of p.walls) for (const o of x.ops || []) { if (x.len == null) { o.d *= k; } }
   }
@@ -739,38 +741,16 @@ const Core = (() => {
       const t = fmtLev(v);
       T(layer, x + r * 1.6 + t.length * hh * 0.33, y, hh, t, 0);
     };
-    for (const lb of p.labels) {
-      const ri = lb.room ? roomInfo(p, lb.room) : null;
-      const x = ri ? ri.c.x + (lb.ox || 0) : lb.x, y = ri ? ri.c.y + (lb.oy || 0) : lb.y, h = lb.h || 0.2;
-      const lines = [];
-      if (lb.text) lines.push([lb.text, h]);
-      if (ri && lb.showArea !== false && scaled) lines.push(['A = ' + fmt(ri.area) + ' m²', h * 0.6]);
-      if (lb.obs) lines.push([lb.obs, h * 0.55]);
-      const hasLev = lb.level != null && Number.isFinite(lb.level);
-      if (hasLev) lines.push([null, h * 0.6]);
-      const tot = lines.reduce((s2, l) => s2 + l[1] * 1.45, 0);
-      let yy = y + tot / 2;
-      for (const [t, hh] of lines) {
-        yy -= hh * 1.45 / 2;
-        if (t == null) { const tw = fmtLev(lb.level).length * hh * 0.66 + hh * 1.5; levMark('NIVEIS', x - tw / 2 + hh * 0.55, yy, lb.level, hh); }
-        else T('TEXTOS', x, yy, hh, t, 0);
-        yy -= hh * 1.45 / 2;
-      }
+    for (const lb of p.labels) for (const ln of labelLayout(p, lb, scaled).lines) T('TEXTOS', ln.x, ln.y, ln.h, ln.t, 0);
+    for (const m of levelMarks(p, scaled)) {
+      levMark('NIVEIS', m.c.x, m.c.y, m.v, m.hh);
+      if (m.lead) L('NIVEIS', m.lead[0], m.lead[1]); // marca afastada da linha: chamada até a linha
     }
-    // linhas que não são parede: desnível (com o nível de cada lado), projeção (tracejada) e outras
+    // linhas que não são parede: desnível, projeção (tracejada) e outras
     for (const ln of p.lines || []) {
-      const A = ln.a, B = ln.b, D = sub(B, A); if (len(D) < 1e-6) continue;
-      if (ln.type === 'projecao') { prims.push({ type: 'line', layer: 'PROJECAO', a: A, b: B, dash: true, ref: ln.id }); continue; }
-      if (ln.type !== 'desnivel') { prims.push({ type: 'line', layer: 'LINHAS', a: A, b: B, ref: ln.id }); continue; }
-      prims.push({ type: 'line', layer: 'DESNIVEL', a: A, b: B, ref: ln.id });
-      const u = unit(D), n = perp(u), Lm = len(D), M = add(A, mul(u, Math.min(Lm / 2, Math.max(0.5, Lm * 0.3)))), hh = 0.14;
-      for (const [v, sg] of [[ln.n1, 1], [ln.n2, -1]]) {
-        if (v == null) continue;
-        const ns = mul(n, sg), r = hh * 0.55, gw = r * 2.6 + fmtLev(v).length * hh * 0.66, gh = r * 2.7;
-        const q = add(M, mul(ns, 0.12 + Math.abs(ns.x) * 0 + Math.abs(ns.y) * gh / 2 + 0.05)); // grupo inteiro do lado certo da linha
-        const x0 = q.x - gw / 2 + ns.x * gw / 2;
-        levMark('NIVEIS', x0 + r * 1.35, q.y, v, hh);
-      }
+      const A = ln.a, B = ln.b; if (len(sub(B, A)) < 1e-6) continue;
+      const layer = ln.type === 'projecao' ? 'PROJECAO' : ln.type === 'desnivel' ? 'DESNIVEL' : 'LINHAS';
+      prims.push({ type: 'line', layer, a: A, b: B, dash: ln.type === 'projecao', ref: ln.id });
     }
     // anotações de campo marcadas no desenho: balão numerado
     (p.notes || []).forEach((nt, i) => {
@@ -802,7 +782,7 @@ const Core = (() => {
   function planBox(p) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); }); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
+    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach((lb) => inc(labelPosC(p, lb))); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); }); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
     return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
@@ -881,6 +861,7 @@ const Core = (() => {
     const rm = st.top === 'telhado' ? roofModel(p) : null;
     const topT = st.top === 'laje' ? (st.lajeT || 0.10) : rm ? rm.rise + 0.3 : 0;
     let baseY = pb.y0 - 2.6 - (st.pd + topT);
+    const fm = floorModel(p);
     p.cuts.forEach((cut) => {
       const nmC = cut.name || 'A';
       // marcação na planta
@@ -906,26 +887,83 @@ const Core = (() => {
       };
       const hs = sd.hits;
       const xmin = hs[0].s - hs[0].tc / 2, xmax = hs[hs.length - 1].s + hs[hs.length - 1].tc / 2;
+      // perfil do piso ao longo do corte (níveis dos ambientes e desníveis)
+      const Lcut = len(sub(cut.b, cut.a)), cuu = unit(sub(cut.b, cut.a));
+      const planS = (S) => add(cut.a, mul(cuu, cut.flip ? Lcut - S : S));
+      const brk = [xmin - 0.4, xmax + 0.4];
+      for (const h of hs) brk.push(h.s - h.tc / 2, h.s + h.tc / 2);
+      for (const d of fm.dls) { // onde o corte cruza a linha de desnível (prolongada dentro do mesmo ambiente)
+        const e = unit(sub(d.l.b, d.l.a)), den = cross(cuu, e);
+        if (Math.abs(den) < 0.05) continue;
+        const sc = cross(sub(d.l.a, cut.a), e) / den; if (sc <= 0 || sc >= Lcut) continue;
+        if (fm.roomOf(add(cut.a, mul(cuu, sc))) !== d.key) continue;
+        brk.push(cut.flip ? Lcut - sc : sc);
+      }
+      brk.sort((a, b) => a - b);
+      const segs = [];
+      for (let k = 0; k + 1 < brk.length; k++) {
+        const a = brk[k], b = brk[k + 1]; if (b - a < 1e-4) continue;
+        const inWall = hs.some((h) => a >= h.s - h.tc / 2 - 1e-6 && b <= h.s + h.tc / 2 + 1e-6);
+        const mp = planS((a + b) / 2);
+        segs.push({ a, b, z: fm.any ? fm.at(mp) : 0, wall: inWall, out: fm.any && fm.hasRooms && fm.roomOf(mp) === '' });
+      }
+      for (let k = 0; k < segs.length; k++) if (segs[k].out && !segs[k].wall) { // fora da edificação: segue o piso interno vizinho
+        let z = null;
+        for (let d = 1; d < segs.length && z == null; d++) for (const j of [k - d, k + d]) if (segs[j] && !segs[j].wall && !segs[j].out) { z = segs[j].z; break; }
+        if (z != null) segs[k].z = z;
+      }
+      const zNear = (S, dir) => { // nível do piso livre mais próximo de um lado
+        if (dir < 0) { for (let k = segs.length - 1; k >= 0; k--) if (!segs[k].wall && segs[k].b <= S + 1e-6) return segs[k].z; }
+        else { for (const g of segs) if (!g.wall && g.a >= S - 1e-6) return g.z; }
+        return null;
+      };
       for (const h of hs) {
-        const s0 = h.s - h.tc / 2, s1 = h.s + h.tc / 2;
+        const zl = zNear(h.s - h.tc / 2, -1), zr = zNear(h.s + h.tc / 2, 1);
+        const zs = [zl, zr].filter((z) => z != null);
+        h.zb = zs.length ? Math.min(...zs) : 0; h.zt = zs.length ? Math.max(...zs) : 0;
+      }
+      for (const g of segs) if (g.wall) { const h = hs.find((x) => g.a >= x.s - x.tc / 2 - 1e-6 && g.b <= x.s + x.tc / 2 + 1e-6); g.z = h ? h.zb : 0; }
+      for (const h of hs) {
+        const s0 = h.s - h.tc / 2, s1 = h.s + h.tc / 2, zb = h.zb, zt = h.zt;
         const cl = { cobogo: 'CORTE-COBOGO', gradil: 'CORTE-GRADIL', vidro: 'CORTE-VIDRO' }[h.w.mat] || 'CORTE-PAREDES';
-        if (!h.op) rect(s0, s1, 0, h.h, cl);
+        if (!h.op) rect(s0, s1, zb, h.h, cl);
         else {
-          const o = h.op, pe = opPe(o), top = Math.min(h.h, pe + opH(o));
-          if (o.type === 'J') rect(s0, s1, 0, pe, cl);
+          const o = h.op, pe = zt + opPe(o), top = Math.min(h.h, pe + opH(o));
+          rect(s0, s1, zb, o.type === 'J' ? pe : zt, cl);
           rect(s0, s1, top, h.h, cl);
           if (o.type === 'J') { L('ESQUADRIAS', P2(h.s, pe), P2(h.s, top)); }
-          else if (o.type === 'P') { L('ESQUADRIAS', P2(s0, top), P2(s0, 0)); L('ESQUADRIAS', P2(s1, top), P2(s1, 0)); }
+          else if (o.type === 'P') { L('ESQUADRIAS', P2(s0, top), P2(s0, zt)); L('ESQUADRIAS', P2(s1, top), P2(s1, zt)); }
           // cotas verticais da abertura
           const cx = s1 + 0.25;
           const vdim = (z0, z1, txt) => { L('COTAS', P2(cx, z0), P2(cx, z1)); for (const z of [z0, z1]) { L('COTAS', P2(cx - 0.05, z - 0.05), P2(cx + 0.05, z + 0.05)); L('COTAS', P2(s1 + 0.03, z), P2(cx + 0.08, z)); } const m = P2(cx + 0.12, (z0 + z1) / 2); T('COTAS', m.x, m.y, 0.10, txt, 90); };
-          if (o.type === 'J' && pe > 0) vdim(0, pe, fmt(pe));
+          if (o.type === 'J' && pe - zt > 0) vdim(zt, pe, fmt(pe - zt));
           vdim(pe, top, fmt(top - pe));
         }
       }
-      // piso
-      L('CORTE-PISO', P2(xmin - 0.4, 0), P2(xmax + 0.4, 0));
-      L('CORTE-PISO', P2(xmin - 0.4, -0.06), P2(xmax + 0.4, -0.06));
+      // piso: segue os níveis, com degrau onde muda
+      for (let k = 0; k < segs.length; k++) {
+        const g = segs[k];
+        if (!g.wall) L('CORTE-PISO', P2(g.a, g.z), P2(g.b, g.z));
+        L('CORTE-PISO', P2(g.a, g.z - 0.06), P2(g.b, g.z - 0.06));
+        const nx = segs[k + 1];
+        if (nx && Math.abs(nx.z - g.z) > 1e-4) {
+          const z0 = Math.min(g.z, nx.z), z1 = Math.max(g.z, nx.z);
+          if (!g.wall && !nx.wall) L('CORTE-PISO', P2(g.b, z0), P2(g.b, z1));
+          L('CORTE-PISO', P2(g.b, z0 - 0.06), P2(g.b, z1 - 0.06));
+        }
+      }
+      if (fm.any) { // nível de cada trecho de piso (marca triangular + cota)
+        let lastZ = null;
+        for (const g of segs) {
+          if (g.wall || g.out || g.b - g.a < 0.35) continue;
+          if (lastZ != null && Math.abs(lastZ - g.z) < 1e-4 && g.b - g.a < 1.2) continue;
+          lastZ = g.z;
+          const sx = g.a + Math.min(0.45, (g.b - g.a) / 2), tp = P2(sx, g.z);
+          L('NIVEIS', tp, P2(sx - 0.07, g.z + 0.12)); L('NIVEIS', tp, P2(sx + 0.07, g.z + 0.12)); L('NIVEIS', P2(sx - 0.07, g.z + 0.12), P2(sx + 0.07, g.z + 0.12));
+          L('NIVEIS', P2(sx + 0.07, g.z + 0.12), P2(sx + 0.55, g.z + 0.12));
+          const t = fmtLev(g.z), tm = P2(sx + 0.1 + t.length * 0.1 * 0.33, g.z + 0.19); T('NIVEIS', tm.x, tm.y, 0.10, t, 0);
+        }
+      }
       // cobertura
       if (st.top === 'laje') rect(xmin, xmax, st.pd, st.pd + topT, 'CORTE-LAJE');
       else if (st.top === 'forro') L('CORTE-LAJE', P2(xmin, st.pd), P2(xmax, st.pd));
@@ -988,7 +1026,7 @@ const Core = (() => {
   function bbox(p, geo) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
+    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach((lb) => inc(labelPosC(p, lb))); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); }); (p.notes || []).forEach((n) => { if (n.pin) inc(n.pin); });
     if (geo) for (const q of geo.prims) { if (q.a) { inc(q.a); inc(q.b); } }
     if (x0 === Infinity) return null;
     return { x0, y0, x1, y1 };
@@ -1157,8 +1195,30 @@ const Core = (() => {
     const bx0 = pb.x0 - ht, by0 = pb.y0 - ht, bx1 = pb.x1 + ht, by1 = pb.y1 + ht;
     const rm = st.top === 'telhado' ? roofModel(p) : null;
     const perimeter = (A, B) => { const e = 0.05; return (Math.abs(A.x - B.x) < e && (Math.abs(A.x - pb.x0) < e || Math.abs(A.x - pb.x1) < e)) || (Math.abs(A.y - B.y) < e && (Math.abs(A.y - pb.y0) < e || Math.abs(A.y - pb.y1) < e)); };
-    // piso
-    prism([{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }], -0.10, 0, C.floor);
+    // piso: base + trechos elevados conforme o nível de cada ambiente e os desníveis
+    const fm = floorModel(p);
+    let zb = 0;
+    if (fm.any) {
+      const levs = [0];
+      for (const lb of p.labels) if (hasLev(lb.level)) levs.push(lb.level);
+      for (const d of fm.dls) { if (hasLev(d.l.n1)) levs.push(d.l.n1); if (hasLev(d.l.n2)) levs.push(d.l.n2); }
+      zb = Math.min(...levs);
+    }
+    prism([{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }], zb - 0.10, zb, C.floor);
+    if (fm.any) {
+      const C2 = [0.89, 0.86, 0.79, 1];
+      for (const f of faces(p)) {
+        let pieces = [f.ids.map((id) => nm.get(id))];
+        const key = roomKey(f.ids);
+        for (const d of fm.dls) if (d.key === key) pieces = pieces.flatMap((pc) => splitPoly(pc, d.l.a, sub(d.l.b, d.l.a)));
+        for (const pc of pieces) {
+          if (pc.length < 3 || Math.abs(area(pc)) < 1e-4) continue;
+          const z = fm.at(innerPt(pc));
+          if (z > zb + 1e-4) prism(pc, zb, z, C2, true);
+        }
+      }
+    }
+    const zAt = (P) => fm.any ? fm.at(P) : 0;
     // paredes, com os vãos das portas e janelas
     const MATC = { alv: [C.wall, tri], cobogo: [[0.86, 0.82, 0.74, 0.62], glass], gradil: [[0.22, 0.23, 0.25, 0.5], glass], vidro: [C.glass, glass] };
     for (const q of geo.quads) {
@@ -1170,10 +1230,10 @@ const Core = (() => {
         const N = 32, h = w.t / 2, Ro = ai.R + h, Ri = Math.max(0.01, ai.R - h);
         for (let k = 0; k < N; k++) {
           const o0 = ai.pt(k / N, Ro), o1 = ai.pt((k + 1) / N, Ro), i0 = ai.pt(k / N, Ri), i1 = ai.pt((k + 1) / N, Ri);
-          prism([o0, o1, i1, i0], 0, H, wc, false, wo);
-          for (const [a, b] of [[o0, o1], [i0, i1]]) { edge(v3(a, H), v3(b, H)); edge(v3(a, 0), v3(b, 0)); }
+          prism([o0, o1, i1, i0], zb, H, wc, false, wo);
+          for (const [a, b] of [[o0, o1], [i0, i1]]) { edge(v3(a, H), v3(b, H)); edge(v3(a, zb), v3(b, zb)); }
         }
-        for (const t of [0, 1]) { const o = ai.pt(t, Ro), i = ai.pt(t, Ri); edge(v3(o, 0), v3(o, H)); edge(v3(i, 0), v3(i, H)); edge(v3(o, H), v3(i, H)); }
+        for (const t of [0, 1]) { const o = ai.pt(t, Ro), i = ai.pt(t, Ri); edge(v3(o, zb), v3(o, H)); edge(v3(i, zb), v3(i, H)); edge(v3(o, H), v3(i, H)); }
         continue;
       }
       const [P1, P2, M2, M1] = q.pts;
@@ -1185,24 +1245,25 @@ const Core = (() => {
       const ivs = (w.ops || []).map((o) => { const s0 = o.d + refShift(p, w, w.a, nm); return { o, s0: Math.max(0, s0), s1: Math.min(Lw, s0 + o.w) }; }).filter((v) => v.s1 - v.s0 > 0.01).sort((a, b) => a.s0 - b.s0);
       let cur = null;
       for (const v of ivs) {
-        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), 0, topFull, wc, true, wo);
-        const o = v.o, pe = opPe(o), top = Math.min(H, pe + opH(o)), f = foot(v.s0, v.s1);
-        if (pe > 0) prism(f, 0, pe, wc, true, wo);
+        if (cur == null || v.s0 > cur + 1e-4) prism(foot(cur, v.s0), zb, topFull, wc, true, wo);
+        const mo = add(A, mul(u, (v.s0 + v.s1) / 2)), zs = Math.max(zAt(add(mo, mul(n, w.t / 2 + 0.25))), zAt(add(mo, mul(n, -(w.t / 2 + 0.25)))));
+        const o = v.o, pe = zs + opPe(o), top = Math.min(H, pe + opH(o)), f = foot(v.s0, v.s1);
+        if (pe > zb + 1e-4) prism(f, zb, pe, wc, true, wo);
         prism(f, top, topFull, wc, true, wo);
         const a0 = add(A, mul(u, v.s0)), a1 = add(A, mul(u, v.s1));
         if (o.type === 'J') quad(v3(a0, pe), v3(a1, pe), v3(a1, top), v3(a0, top), C.glass, glass);
         else if (o.type === 'P') {
           const off = mul(n, (o.side === -1 ? -1 : 1) * (w.t / 2 - 0.02)), m = opModel(o) === 'enrolar' ? C.metal : C.door;
           const b0 = add(a0, off), b1 = add(a1, off);
-          quad(v3(b0, 0), v3(b1, 0), v3(b1, top), v3(b0, top), m); quad(v3(b1, 0), v3(b0, 0), v3(b0, top), v3(b1, top), m);
-          edge(v3(b0, 0), v3(b0, top)); edge(v3(b1, 0), v3(b1, top)); edge(v3(b0, top), v3(b1, top));
+          quad(v3(b0, pe), v3(b1, pe), v3(b1, top), v3(b0, top), m); quad(v3(b1, pe), v3(b0, pe), v3(b0, top), v3(b1, top), m);
+          edge(v3(b0, pe), v3(b0, top)); edge(v3(b1, pe), v3(b1, top)); edge(v3(b0, top), v3(b1, top));
         }
         cur = v.s1;
       }
-      prism(foot(cur, null), 0, topFull, wc, true, wo);
+      prism(foot(cur, null), zb, topFull, wc, true, wo);
     }
     // pilares
-    for (const pl of p.pillars) prism(pillarCorners({ ...pl, bw: pl.bw + 0.012, bh: pl.bh + 0.012 }), 0, st.pd + (st.top === 'laje' ? (st.lajeT || 0.1) : 0) + 0.006, C.pil); // um pouco maior para não "brigar" com a parede
+    for (const pl of p.pillars) prism(pillarCorners({ ...pl, bw: pl.bw + 0.012, bh: pl.bh + 0.012 }), zb, st.pd + (st.top === 'laje' ? (st.lajeT || 0.1) : 0) + 0.006, C.pil); // um pouco maior para não "brigar" com a parede
     // cobertura
     if (opts.cover !== false) {
       const rect = [{ x: bx0, y: by0 }, { x: bx1, y: by0 }, { x: bx1, y: by1 }, { x: bx0, y: by1 }];
@@ -1344,7 +1405,7 @@ const Core = (() => {
     const mv = (o) => { const x = Tf[0] * o.x + Tf[1] * o.y + Tf[2], y = Tf[3] * o.x + Tf[4] * o.y + Tf[5]; o.x = x; o.y = y; };
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } });
     p.labels.forEach(mv);
-    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
+    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); if (l.p1) mv(l.p1); if (l.p2) mv(l.p2); });
     (p.notes || []).forEach((n) => { if (n.pin) mv(n.pin); });
     return T - L;
   }
@@ -1355,6 +1416,99 @@ const Core = (() => {
   }
 
   /* ---------- AMBIENTES: polígonos fechados formados pelas paredes ---------- */
+  /* posição dos textos de um ambiente/texto livre e de suas linhas */
+  function labelPosC(p, lb) {
+    const ri = lb.room ? roomInfo(p, lb.room) : null;
+    return ri ? { x: ri.c.x + (lb.ox || 0), y: ri.c.y + (lb.oy || 0), ri } : { x: lb.x, y: lb.y, ri: null };
+  }
+  const hasLev = (v) => v != null && Number.isFinite(v);
+  function labelLayout(p, lb, scaled) {
+    const lp = labelPosC(p, lb), h = lb.h || 0.2, rows = [];
+    if (lb.text) rows.push([lb.text, h]);
+    if (lp.ri && lb.showArea !== false && scaled) rows.push(['A = ' + fmt(lp.ri.area) + ' m²', h * 0.6]);
+    if (lb.obs) rows.push([lb.obs, h * 0.55]);
+    const inStack = hasLev(lb.level) && !lb.lv;
+    if (inStack) rows.push([null, h * 0.6]);
+    const f = (t) => t == null ? 2.3 : 1.45;
+    const tot = rows.reduce((s2, l) => s2 + l[1] * f(l[0]), 0);
+    let yy = lp.y + tot / 2; const lines = []; let mark = null;
+    for (const [t, hh] of rows) {
+      yy -= hh * f(t) / 2;
+      if (t == null) { const tw = fmtLev(lb.level).length * hh * 0.66 + hh * 1.5; mark = { c: { x: lp.x - tw / 2 + hh * 0.55, y: yy }, hh }; }
+      else lines.push({ x: lp.x, y: yy, h: hh, t });
+      yy -= hh * f(t) / 2;
+    }
+    if (hasLev(lb.level) && lb.lv) mark = { c: { x: lp.x + lb.lv.x, y: lp.y + lb.lv.y }, hh: h * 0.6 };
+    return { lp, lines, mark };
+  }
+  /* todas as marcas de nível (dos ambientes/textos e dos dois lados de cada desnível), com a posição do círculo */
+  function levelMarks(p, scaled) {
+    if (scaled == null) scaled = p.walls.some((w) => w.len != null);
+    const out = [];
+    for (const lb of p.labels) {
+      if (!hasLev(lb.level)) continue;
+      const lo = labelLayout(p, lb, scaled);
+      if (lo.mark) out.push({ kind: 'label', o: lb, side: 0, c: lo.mark.c, hh: lo.mark.hh, v: lb.level });
+    }
+    for (const ln of p.lines || []) {
+      if (ln.type !== 'desnivel') continue;
+      const D = sub(ln.b, ln.a), Lm = len(D); if (Lm < 1e-6) continue;
+      const u = unit(D), n = perp(u), M = add(ln.a, mul(u, Math.min(Lm / 2, Math.max(0.5, Lm * 0.3)))), hh = 0.14;
+      for (const [v, sg, key] of [[ln.n1, 1, 'p1'], [ln.n2, -1, 'p2']]) {
+        if (!hasLev(v)) continue;
+        let c0;
+        if (ln[key]) c0 = { x: ln[key].x, y: ln[key].y };
+        else {
+          const ns = mul(n, sg), r = hh * 0.55, gw = r * 2.6 + fmtLev(v).length * hh * 0.66, gh = r * 2.7;
+          const q = add(M, mul(ns, 0.17 + Math.abs(ns.y) * gh / 2));
+          c0 = { x: q.x - gw / 2 + ns.x * gw / 2 + r * 1.35, y: q.y };
+        }
+        let lead = null;
+        if (ln[key]) { // afastada da linha: chamada do círculo até o ponto mais próximo da linha
+          const t = Math.max(0, Math.min(Lm, dot(sub(c0, ln.a), u))), F = add(ln.a, mul(u, t)), d = len(sub(c0, F));
+          if (d > 0.6) lead = [add(c0, mul(unit(sub(F, c0)), hh * 0.8)), F];
+        }
+        out.push({ kind: 'line', o: ln, side: sg > 0 ? 1 : 2, key, c: c0, hh, v, lead });
+      }
+    }
+    return out;
+  }
+  /* nível do piso num ponto da planta: desnível mais próximo do mesmo ambiente; senão nível do ambiente; senão 0 */
+  function floorModel(p) {
+    const nm = nodeMap(p), fs = faces(p), polys = fs.map((f) => ({ f, pts: f.ids.map((id) => nm.get(id)), key: roomKey(f.ids) }));
+    const roomOf = (pt) => { let best = null; for (const q of polys) if (inPoly(pt, q.pts) && (!best || q.f.area < best.f.area)) best = q; return best ? best.key : ''; };
+    const roomLev = new Map();
+    for (const lb of p.labels) if (hasLev(lb.level)) { const k = lb.room ? roomKey(lb.room) : roomOf(lb); if (!roomLev.has(k) || lb.room) roomLev.set(k, lb.level); }
+    const dls = (p.lines || []).filter((l) => l.type === 'desnivel' && (hasLev(l.n1) || hasLev(l.n2)) && len(sub(l.b, l.a)) > 1e-6)
+      .map((l) => ({ l, key: roomOf(mul(add(l.a, l.b), 0.5)) }));
+    const any = roomLev.size > 0 || dls.length > 0;
+    const at = (pt) => {
+      const k = roomOf(pt); let best = null, bd = Infinity;
+      for (const d of dls) if (d.key === k) { const r = segDistC(pt, d.l.a, d.l.b); if (r < bd) { bd = r; best = d.l; } }
+      const base = roomLev.has(k) ? roomLev.get(k) : 0;
+      if (best) { const sd = cross(sub(best.b, best.a), sub(pt, best.a)); const v = sd > 0 ? best.n1 : best.n2; return hasLev(v) ? v : base; }
+      return base;
+    };
+    return { any, at, roomOf, dls, hasRooms: polys.length > 0 };
+  }
+  /* corta um polígono pela reta (a, dir): devolve os pedaços dos dois lados */
+  function splitPoly(pts, a, dir) {
+    const sd = (P) => cross(dir, sub(P, a)), L = [], Rr = [], k = pts.length;
+    for (let i = 0; i < k; i++) {
+      const P = pts[i], Q = pts[(i + 1) % k], sp = sd(P), sq = sd(Q);
+      if (sp >= 0) L.push(P); if (sp <= 0) Rr.push(P);
+      if ((sp > 0 && sq < 0) || (sp < 0 && sq > 0)) { const t = sp / (sp - sq), X = add(P, mul(sub(Q, P), t)); L.push(X); Rr.push(X); }
+    }
+    return [L, Rr].filter((q) => q.length >= 3);
+  }
+  /* um ponto que com certeza está dentro do polígono */
+  function innerPt(pts) {
+    const cx = pts.reduce((s, q) => s + q.x, 0) / pts.length, cy = pts.reduce((s, q) => s + q.y, 0) / pts.length;
+    if (inPoly({ x: cx, y: cy }, pts)) return { x: cx, y: cy };
+    for (let i = 1; i + 1 < pts.length; i++) { const g = { x: (pts[0].x + pts[i].x + pts[i + 1].x) / 3, y: (pts[0].y + pts[i].y + pts[i + 1].y) / 3 }; if (inPoly(g, pts)) return g; }
+    return { x: cx, y: cy };
+  }
+  const segDistC = (pt, a, b) => { const d = sub(b, a), L2 = dot(d, d); const t = L2 ? Math.max(0, Math.min(1, dot(sub(pt, a), d) / L2)) : 0; return len(sub(pt, add(a, mul(d, t)))); };
   function faces(p) {
     const nm = nodeMap(p), adj = new Map();
     for (const w of p.walls) {
@@ -1468,7 +1622,7 @@ const Core = (() => {
     p.nodes = p.nodes.filter((n) => used.has(n.id));
   }
 
-  return { notesLines, noteDate, fmtLev, reconcileRooms, faces, faceAt, roomInfo, roomKey, arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+  return { levelMarks, labelLayout, floorModel, notesLines, noteDate, fmtLev, reconcileRooms, faces, faceAt, roomInfo, roomKey, arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
 })();
 
 
@@ -1982,7 +2136,15 @@ function paint() {
     }
   }
   // linha selecionada: marca os lados A e B (nível de cada lado)
-  const sl = sel && sel.type === 'line' && (P.lines || []).find((x) => x.id === sel.id);
+  // destaque do texto ou da marca de nível selecionados
+  if (sel && (sel.type === 'label' || sel.type === 'lev')) {
+    let bx = null;
+    if (sel.type === 'lev') { const m = findLev(sel.key); if (m) bx = levRect(m); }
+    else { const lb = P.labels.find((x) => x.id === sel.id); if (lb) { const lo = C.labelLayout(P, lb, P.walls.some((w) => w.len != null)); const rows = lo.lines.length ? lo.lines : [{ x: lo.lp.x, y: lo.lp.y, h: lb.h || .2, t: '    ' }]; let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; for (const r of rows) { const hw = r.t.length * r.h * 0.33; x0 = Math.min(x0, r.x - hw); x1 = Math.max(x1, r.x + hw); y0 = Math.min(y0, r.y - r.h * 0.7); y1 = Math.max(y1, r.y + r.h * 0.7); } if (lo.mark && !lb.lv) { const b2 = levRect({ c: lo.mark.c, hh: lo.mark.hh, v: lb.level }); x0 = Math.min(x0, b2.x0); x1 = Math.max(x1, b2.x1); y0 = Math.min(y0, b2.y0); } bx = { x0, x1, y0, y1 }; } }
+    if (bx) { const a = toS({ x: bx.x0, y: bx.y1 }), b = toS({ x: bx.x1, y: bx.y0 }); g.save(); g.strokeStyle = colors.accent; g.lineWidth = 2; g.setLineDash([6, 4]); g.strokeRect(a.x - 6, a.y - 6, b.x - a.x + 12, b.y - a.y + 12); g.restore(); }
+  }
+  const selLevM = sel && sel.type === 'lev' ? findLev(sel.key) : null;
+  const sl = (sel && sel.type === 'line' && (P.lines || []).find((x) => x.id === sel.id)) || (selLevM && selLevM.kind === 'line' ? selLevM.o : null);
   if (sl && sl.type === 'desnivel') {
     const u = C.unit(C.sub(sl.b, sl.a)), n = C.perp(u), M = C.mul(C.add(sl.a, sl.b), 0.5);
     for (const [k, sg] of [['A', 1], ['B', -1]]) {
@@ -2080,7 +2242,8 @@ function drawLoupe() {
       };
       len = Math.max(0, L - trim(drawing.start) - trim(drawing.end));
     }
-  } else f = toS(drag.o);
+  } else f = drag.cur ? toS(drag.cur) : drag.o && drag.o.x != null ? toS(drag.o) : null;
+  if (!f) return;
   const r = 70, z = 2.5, src = (2 * r) / z;
   const left = f.x > W / 2;
   const cx = left ? r + 12 : W - r - 12;
@@ -2197,7 +2360,14 @@ function resolveNode(sn) {
 const ptrs = new Map();
 let pinch = null, drag = null, panning = null, tapInfo = null;
 const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-const hitPillar = (w) => P.pillars.find((pl) => Math.hypot(pl.x - w.x, pl.y - w.y) < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s));
+const nearestOf = (arr, d) => { let best = null, bd = Infinity; for (const o of arr) { const v = d(o); if (v != null && v < bd) { bd = v; best = o; } } return best; };
+const hitPillar = (w) => nearestOf(P.pillars, (pl) => { const d = Math.hypot(pl.x - w.x, pl.y - w.y); return d < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s) ? d : null; });
+/* marcas de nível (dos ambientes e dos desníveis): área de toque = símbolo + número */
+const levRect = (m) => { const r = Math.max(0.06, m.hh * 0.55), gw = r * 1.6 + C.fmtLev(m.v).length * m.hh * 0.66; return { x0: m.c.x - r * 1.4, x1: m.c.x + r * 0.3 + gw, y0: m.c.y - Math.max(r * 1.4, m.hh * 0.7), y1: m.c.y + Math.max(r * 1.4, m.hh * 0.7) }; };
+const levDist = (m, w) => { const b = levRect(m), dx = Math.max(b.x0 - w.x, 0, w.x - b.x1), dy = Math.max(b.y0 - w.y, 0, w.y - b.y1); return Math.hypot(dx, dy); };
+const hitLev = (w, tolPx = 14) => nearestOf(C.levelMarks(P), (m) => { const d = levDist(m, w); return d < tolPx / view.s ? d : null; });
+const levKey = (m) => m.o.id + ':' + m.side;
+const findLev = (key) => C.levelMarks(P).find((m) => levKey(m) === key);
 const labelPos = (lb) => { const ri = lb.room ? C.roomInfo(P, lb.room) : null; return ri ? { x: ri.c.x + (lb.ox || 0), y: ri.c.y + (lb.oy || 0) } : { x: lb.x, y: lb.y }; };
 const hitLabel = (w) => {
   let best = null, bd = Infinity;
@@ -2209,7 +2379,7 @@ const hitLabel = (w) => {
   }
   return best;
 };
-const hitNote = (w) => (P.notes || []).find((n) => n.pin && Math.hypot(n.pin.x - w.x, n.pin.y - w.y) < Math.max(16 / view.s, 0.22));
+const hitNote = (w) => nearestOf(P.notes || [], (n) => { if (!n.pin) return null; const d = Math.hypot(n.pin.x - w.x, n.pin.y - w.y); return d < Math.max(18 / view.s, 0.24) ? d : null; });
 const hitLine = (w) => { let best = null, bd = 16 / view.s; for (const c of P.lines || []) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 const hitCut = (w) => { let best = null, bd = 16 / view.s; for (const c of P.cuts) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 
@@ -2272,20 +2442,21 @@ cv.addEventListener('pointerdown', (e) => {
   if (ptrs.size > 2) return;
   tapInfo = { x: p.x, y: p.y, t: Date.now() };
   const w = toW(p.x, p.y);
+  if (mode === 'linha' && hitLev(w, 12)) { drag = dragFor({ t: 'lev', o: hitLev(w, 12) }); return; }
   if (mode === 'parede' || mode === 'diag' || mode === 'corte' || mode === 'linha') {
     if (mode === 'corte') { drawing = { start: { pt: w }, end: { pt: w }, path: [p] }; render(); return; }
     const st = snap(p.x, p.y, null);
     if (mode === 'diag' && !st.nodeId) { drawing = null; panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy }; return; }
     drawing = { start: st, end: st, path: [p] }; render();
-  } else if (mode === 'texto' && (hitNote(w) || hitLabel(w))) {
-    const hnt = hitNote(w);
-    drag = hnt ? { type: 'note', o: hnt.pin, note: hnt, moved: false } : { type: 'label', o: hitLabel(w), moved: false };
+  } else if (mode === 'texto' && pickAll(w, ['note', 'lev', 'label']).length) {
+    drag = dragFor(pickAll(w, ['note', 'lev', 'label'])[0]);
   } else if (mode === 'editar' || mode === 'pilar') {
     const n = mode === 'editar' ? nearestNode(w, 22 / view.s) : null;
-    const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null, hnt = mode === 'editar' ? hitNote(w) : null;
+    const hp = hitPillar(w), hl = mode === 'editar' ? hitLabel(w) : null, hnt = mode === 'editar' ? hitNote(w) : null, hv = mode === 'editar' ? hitLev(w, 12) : null;
     let hb = null; // número da parede: tocar seleciona, arrastar curva a parede
     if (mode === 'editar' && !hp && !n) { const nm = C.nodeMap(P); for (const x of C.paredes(P)) { const m = C.wallMid(P, x, nm); if (Math.hypot(m.x - w.x, m.y - w.y) < 18 / view.s) { hb = x; break; } } }
     if (hnt) drag = { type: 'note', o: hnt.pin, note: hnt, moved: false };
+    else if (hv) drag = dragFor({ t: 'lev', o: hv });
     else if (hp) drag = { type: 'pillar', o: hp, moved: false };
     else if (n) drag = { type: 'node', o: n, moved: false };
     else if (hb) drag = { type: 'bend', o: hb, moved: false };
@@ -2317,6 +2488,7 @@ cv.addEventListener('pointermove', (e) => {
     if (!drag.moved && !moved) return;
     if (!drag.moved && drag.type === 'bend' && (drag.o.ops || []).length) { toast('Para curvar, retire antes as portas e janelas desta parede.'); drag = null; return; }
     if (!drag.moved) { pushUndo(); drag.moved = true; }
+    drag.cur = toW(p.x, p.y);
     if (drag.type === 'bend') {
       const nm = C.nodeMap(P), A = nm.get(drag.o.a), B = nm.get(drag.o.b), u = C.unit(C.sub(B, A)), M = C.mul(C.add(A, B), 0.5);
       let f = C.dot(C.sub(toW(p.x, p.y), M), C.perp(u));
@@ -2329,6 +2501,8 @@ cv.addEventListener('pointermove', (e) => {
       const sn = snap(p.x, p.y, { pt: drag.o, nodeId: drag.o.id }, false);
       const w = sn.nodeId ? (ima ? gridSnap(toW(p.x, p.y)) : toW(p.x, p.y)) : sn.pt;
       drag.o.x = w.x; drag.o.y = w.y; drag.guides = sn.nodeId ? [] : alignGuides(w, drag.o.id);
+    } else if (drag.type === 'lev') {
+      setLevPos(drag.m, toW(p.x, p.y));
     } else if (drag.type === 'label' && drag.o.room) {
       const w = toW(p.x, p.y), ri = C.roomInfo(P, drag.o.room);
       if (ri) { drag.o.ox = w.x - ri.c.x; drag.o.oy = w.y - ri.c.y; } else { drag.o.x = w.x; drag.o.y = w.y; }
@@ -2403,13 +2577,11 @@ function endPtr(e) {
   if (pinch) { if (ptrs.size < 2) { pinch = null; tapInfo = null; panning = null; } return; }
   const wasTap = tapInfo && Math.hypot(p.x - tapInfo.x, p.y - tapInfo.y) <= 8 && Date.now() - tapInfo.t < 600;
   tapInfo = null;
-  if (labelFor) {
+  if (moveFor) {
     if (wasTap && e.type !== 'pointercancel') {
       drawing = null; drag = null; panning = null;
-      const lb = labelFor; labelFor = null; pushUndo(); const w = toW(p.x, p.y);
-      const ri = lb.room ? C.roomInfo(P, lb.room) : null;
-      if (ri) { lb.ox = w.x - ri.c.x; lb.oy = w.y - ri.c.y; } else { lb.x = w.x; lb.y = w.y; }
-      $('#hint').textContent = HINTS[mode] || ''; sel = null; changed(); toast('Texto movido.');
+      const mf = moveFor; moveFor = null; pushUndo(); mf.apply(toW(p.x, p.y));
+      $('#hint').textContent = HINTS[mode] || ''; sel = null; changed(); toast(mf.done);
       return;
     }
     drawing = null; drag = null;
@@ -2459,6 +2631,7 @@ function endPtr(e) {
     if (dg.moved) {
       if (dg.type === 'node') mergeNode(dg.o);
       if (dg.type === 'pillar') sel = { type: 'pillar', id: dg.o.id };
+      if (dg.type === 'lev') { sel = { type: 'lev', key: levKey(dg.m) }; setTimeout(() => { if (sel && sel.type === 'lev') { sel = null; render(); } }, 1500); }
       if (dg.type === 'bend' && dg.o.bulge) toast(`Parede curva: flecha ${C.fmt(Math.abs(dg.o.bulge))} m. Ajuste fino na folha da parede.`);
       changed(); return;
     }
@@ -2467,8 +2640,9 @@ function endPtr(e) {
       else { sel = { type: 'pillar', id: dg.o.id }; render(); }
       return;
     }
-    if (dg.type === 'label') { sel = { type: 'label', id: dg.o.id }; render(); labelSheet(dg.o); return; }
     if (dg.type === 'note') { sel = { type: 'note', id: dg.note.id }; render(); noteSheet(dg.note); return; }
+    if (dg.type === 'lev') { tapSelect(p, mode === 'texto' ? ['note', 'lev', 'label'] : null, 'v:' + levKey(dg.m)); return; }
+    if (dg.type === 'label') { tapSelect(p, mode === 'texto' ? ['note', 'lev', 'label'] : null, 'l:' + dg.o.id); return; }
     if (dg.type === 'node' || dg.type === 'bend') { tapSelect(p); return; }
   }
   if (panning) {
@@ -2478,8 +2652,8 @@ function endPtr(e) {
     if (mode === 'editar' || mode === 'diag') tapSelect(p);
     else if (mode === 'pilar') { if (sel && sel.type === 'pillar') { sel = null; render(); } else placePillar(p); }
     else if (mode === 'texto') {
-      const w = toW(p.x, p.y), hl = hitLabel(w);
-      if (hl) { sel = { type: 'label', id: hl.id }; render(); labelSheet(hl); return; }
+      const w = toW(p.x, p.y);
+      if (tapSelect(p, ['note', 'lev', 'label'])) return;
       const f = C.faceAt(P, w), taken = f && P.labels.some((lb) => lb.room && C.roomKey(lb.room) === C.roomKey(f.ids));
       labelSheet({ id: null, x: w.x, y: w.y, text: '', h: 0.2, room: f && !taken ? f.ids : null, showArea: true, obs: '' });
     }
@@ -2512,22 +2686,44 @@ function wallCandidates(w) {
   }
   return out.sort((a, b) => a.d - b.d);
 }
-function tapSelect(p) {
-  const w = toW(p.x, p.y);
-  const hnt = hitNote(w); if (hnt) { sel = { type: 'note', id: hnt.id }; render(); noteSheet(hnt); return; }
-  const hp = hitPillar(w); if (hp) { sel = { type: 'pillar', id: hp.id }; render(); return; }
-  const hc = hitCut(w); if (hc) { sel = { type: 'cut', id: hc.id }; render(); cutSheet(hc); return; }
-  const hn = hitLine(w); if (hn) { sel = { type: 'line', id: hn.id }; render(); lineSheet(hn); return; }
-  const cands = wallCandidates(w);
-  if (!cands.length) { sel = null; lastTap = null; render(); return; }
+/* tudo o que está debaixo do dedo, do mais provável ao menos provável (tocar de novo no mesmo lugar passa para o próximo) */
+function pickAll(w, only) {
+  const out = [], px = (d) => d * view.s, ok = (t) => !only || only.includes(t);
+  if (ok('note')) for (const n of P.notes || []) if (n.pin) { const d = px(Math.hypot(n.pin.x - w.x, n.pin.y - w.y)); if (d < Math.max(20, 0.24 * view.s)) out.push({ t: 'note', o: n, key: 'n:' + n.id, s: d - 14 }); }
+  if (ok('lev')) for (const m of C.levelMarks(P)) { const d = px(levDist(m, w)); if (d < 16) out.push({ t: 'lev', o: m, key: 'v:' + levKey(m), s: d - 12 }); }
+  if (ok('pillar')) for (const pl of P.pillars) { const d = px(Math.hypot(pl.x - w.x, pl.y - w.y)), r = Math.max(22, (Math.max(pl.bw, pl.bh) / 2) * view.s + 8); if (d < r) out.push({ t: 'pillar', o: pl, key: 'p:' + pl.id, s: d - r * 0.6 }); }
+  if (ok('label')) { const hl = hitLabel(w); if (hl) out.push({ t: 'label', o: hl, key: 'l:' + hl.id, s: px(Math.hypot(labelPos(hl).x - w.x, labelPos(hl).y - w.y)) * 0.5 - 6 }); }
+  if (ok('line')) for (const c of P.lines || []) { const d = px(segDist(w, c.a, c.b).d); if (d < 18) out.push({ t: 'line', o: c, key: 'i:' + c.id, s: d - 3 }); }
+  if (ok('cut')) for (const c of P.cuts) { const d = px(segDist(w, c.a, c.b).d); if (d < 18) out.push({ t: 'cut', o: c, key: 'c:' + c.id, s: d - 2 }); }
+  if (ok('wall')) for (const c of wallCandidates(w)) out.push({ t: 'wall', o: c.wall, key: 'w:' + c.wall.id, s: c.d < 0 ? -20 : px(c.d) });
+  return out.sort((a, b) => a.s - b.s);
+}
+function openPick(k, p) {
+  const o = k.o;
+  if (k.t === 'note') { sel = { type: 'note', id: o.id }; render(); noteSheet(o); }
+  else if (k.t === 'lev') { sel = { type: 'lev', key: levKey(o) }; render(); o.kind === 'label' ? labelSheet(o.o) : lineSheet(o.o); }
+  else if (k.t === 'pillar') { sel = { type: 'pillar', id: o.id }; render(); }
+  else if (k.t === 'label') { sel = { type: 'label', id: o.id }; render(); labelSheet(o); }
+  else if (k.t === 'line') { sel = { type: 'line', id: o.id }; render(); lineSheet(o); }
+  else if (k.t === 'cut') { sel = { type: 'cut', id: o.id }; render(); cutSheet(o); }
+  else { sel = { type: 'wall', id: o.id }; render(); o.kind === 'verif' ? verifSheet(o) : wallSheet(o); centerOn(o, true); }
+}
+const PICK_NAME = { note: 'anotação', lev: 'nível', pillar: 'pilar', label: 'texto', line: 'linha', cut: 'corte', wall: 'parede' };
+function tapSelect(p, only, prefer) {
+  const w = toW(p.x, p.y), cands = pickAll(w, only);
+  if (prefer) { const k = cands.findIndex((c) => c.key === prefer); if (k > 0 && !(lastTap && lastTap.key === prefer)) cands.unshift(cands.splice(k, 1)[0]); }
+  if (!cands.length) { sel = null; lastTap = null; render(); return false; }
   let i = 0;
-  if (lastTap && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 14 && Date.now() - lastTap.t < 8000 && cands.length > 1) {
-    const prev = cands.findIndex((c) => c.wall.id === lastTap.id); i = (prev + 1) % cands.length;
+  if (lastTap && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 16 && Date.now() - lastTap.t < 8000 && cands.length > 1) {
+    const prev = cands.findIndex((c) => c.key === lastTap.key); i = (prev + 1) % cands.length;
   }
-  const x = cands[i].wall;
-  lastTap = { x: p.x, y: p.y, t: Date.now(), id: x.id };
-  if (cands.length > 1 && i === 0) setTimeout(() => toast('Não é essa? Toque de novo no mesmo lugar para escolher a parede vizinha.'), 400);
-  sel = { type: 'wall', id: x.id }; render(); x.kind === 'verif' ? verifSheet(x) : wallSheet(x); centerOn(x, true);
+  lastTap = { x: p.x, y: p.y, t: Date.now(), key: cands[i].key };
+  if (cands.length > 1 && i === 0) {
+    const nx = cands[1];
+    setTimeout(() => toast(`Não é ${['wall', 'line', 'note'].includes(cands[0].t) ? 'essa' : 'esse'}? Toque de novo no mesmo lugar para escolher ${['wall', 'line', 'note'].includes(nx.t) ? 'a' : 'o'} ${PICK_NAME[nx.t]} ao lado.`), 400);
+  }
+  openPick(cands[i], p);
+  return true;
 }
 function rotatePillar(pl, deg) { pushUndo(); pl.rot = (((pl.rot || 0) + deg) % 360 + 360) % 360; changed(); }
 function placePillar(p) {
@@ -2883,7 +3079,23 @@ function cutSheet(cut, isNew) {
   }, () => { sel = null; render(); });
 }
 /* ---------- anotações de campo ---------- */
-let pinFor = null, labelFor = null;
+let pinFor = null, moveFor = null;
+function dragFor(k) {
+  if (!k) return null;
+  if (k.t === 'note') return { type: 'note', o: k.o.pin, note: k.o, moved: false };
+  if (k.t === 'lev') return { type: 'lev', m: k.o, moved: false };
+  return { type: 'label', o: k.o, moved: false };
+}
+/* coloca o círculo da marca de nível no ponto w */
+function setLevPos(m, w) {
+  if (m.kind === 'label') { const lp = labelPos(m.o); m.o.lv = { x: w.x - lp.x, y: w.y - lp.y }; }
+  else m.o[m.key] = { x: w.x, y: w.y };
+}
+function askMove(msg, done, apply) {
+  moveFor = { apply, done }; closeSheet(); render();
+  $('#hint').textContent = msg + ' (dá para mover e dar zoom antes).'; $('#hint').hidden = false;
+  toast(msg + '.');
+}
 const NOTE_TAGS = ['Fissura', 'Trinca', 'Infiltração', 'Umidade/mofo', 'Desplacamento', 'Instalação elétrica', 'Instalação hidráulica', 'Esquadria danificada', 'Piso danificado', 'Cobertura/telhado', 'Foto nº', 'Medir de novo'];
 function updNotesBtn() {
   const b = $('#bNotes'); if (!b || !P) return;
@@ -2939,15 +3151,35 @@ async function shareNotes() {
 let lastLineType = 'desnivel';
 const LINE_TYPES = [['desnivel', 'Desnível'], ['projecao', 'Projeção'], ['outra', 'Outra linha']];
 const levStr = (v) => v == null ? '' : C.fmt(v).replace(/^(?!-)/, v > 0 ? '+' : '');
+/* esquema do lado A e do lado B da linha, do jeito que ela aparece na tela */
+function sideScheme(ln, n1, n2) {
+  const d = C.unit(C.sub(ln.b, ln.a)), ds = { x: d.x, y: -d.y }, ns = { x: -d.y, y: -d.x }; // na tela o y desce
+  const cx = 70, cy = 55, L = 48, R = 30;
+  const p = (k, s) => ({ x: cx + ds.x * k + ns.x * s, y: cy + ds.y * k + ns.y * s });
+  const A = p(0, R), B = p(0, -R), e0 = p(-L, 0), e1 = p(L, 0);
+  const hatch = []; for (let k = -40; k <= 40; k += 10) { const q0 = p(k, 0), q1 = p(k - 6, -8); hatch.push(`<line x1="${q0.x.toFixed(1)}" y1="${q0.y.toFixed(1)}" x2="${q1.x.toFixed(1)}" y2="${q1.y.toFixed(1)}"/>`); }
+  const word = (v) => Math.abs(v.x) > Math.abs(v.y) ? (v.x > 0 ? 'à direita' : 'à esquerda') : (v.y < 0 ? 'acima' : 'abaixo');
+  const lab = (q, k, v) => `<circle cx="${q.x.toFixed(1)}" cy="${q.y.toFixed(1)}" r="13" fill="var(--accent)"/><text x="${q.x.toFixed(1)}" y="${(q.y + 4.5).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">${k}</text>`;
+  return `<div class="scheme"><svg viewBox="0 0 140 110" width="140" height="110" aria-hidden="true">
+    <rect x="1" y="1" width="138" height="108" rx="10" fill="var(--paper)" stroke="var(--line)"/>
+    <g stroke="var(--muted)" stroke-width="1">${hatch.join('')}</g>
+    <line x1="${e0.x.toFixed(1)}" y1="${e0.y.toFixed(1)}" x2="${e1.x.toFixed(1)}" y2="${e1.y.toFixed(1)}" stroke="var(--orange)" stroke-width="3" stroke-linecap="round"/>
+    ${lab(A, 'A')}${lab(B, 'B')}</svg>
+    <div><p style="margin:0"><b>Lado A</b>: ${word(ns)} da linha, como está na tela agora${n1 != null ? ` (nível ${C.fmtLev(n1)})` : ''}.</p>
+    <p style="margin:6px 0 0"><b>Lado B</b>: ${word({ x: -ns.x, y: -ns.y })} da linha${n2 != null ? ` (nível ${C.fmtLev(n2)})` : ''}.</p>
+    <p style="margin:6px 0 0;font-size:12px">As letras A e B também aparecem no desenho, junto da linha.</p></div></div>`;
+}
 function lineSheet(ln, isNew) {
   const L = Math.hypot(ln.b.x - ln.a.x, ln.b.y - ln.a.y), scaled = P.walls.some((w) => w.len != null);
   openSheet(`<h2>${isNew ? 'Nova linha' : 'Linha'}</h2>
     <div class="f"><span class="lab">Tipo</span>${segHTML('lt', LINE_TYPES, ln.type)}</div>
     <div data-lev ${ln.type === 'desnivel' ? '' : 'hidden'}>
-      <p>Nível do piso de cada lado da linha (em metros). Os lados estão marcados no desenho com <b style="color:var(--accent)">A</b> e <b style="color:var(--accent)">B</b>.</p>
-      <div class="row"><div class="f"><label for="iN1">Nível lado A</label><input id="iN1" inputmode="decimal" value="${esc(levStr(ln.n1))}" placeholder="ex.: 0,00"></div>
-      <div class="f"><label for="iN2">Nível lado B</label><input id="iN2" inputmode="decimal" value="${esc(levStr(ln.n2))}" placeholder="ex.: -0,15"></div></div>
+      <div data-sch>${sideScheme(ln, ln.n1, ln.n2)}</div>
+      <div class="row"><div class="f"><label for="iN1">Nível do lado A</label><input id="iN1" inputmode="decimal" value="${esc(levStr(ln.n1))}" placeholder="ex.: 0,00"></div>
+      <div class="f"><label for="iN2">Nível do lado B</label><input id="iN2" inputmode="decimal" value="${esc(levStr(ln.n2))}" placeholder="ex.: -0,15"></div></div>
       <p data-dif style="margin-top:0"></p>
+      <div class="acts" style="margin-top:0;flex-wrap:wrap"><button class="pill" data-swap>Trocar A ↔ B</button>${!isNew && ln.n1 != null ? '<button class="pill" data-m1>Mover nível A</button>' : ''}${!isNew && ln.n2 != null ? '<button class="pill" data-m2>Mover nível B</button>' : ''}${ln.p1 || ln.p2 ? '<button class="pill" data-auto>Níveis junto da linha</button>' : ''}</div>
+      <p style="margin-top:6px">Os níveis também podem ser arrastados direto no desenho (ferramentas Linha, Texto ou Editar). Eles aparecem no corte que atravessar esta linha.</p>
     </div>
     <p data-pj ${ln.type === 'projecao' ? '' : 'hidden'}>Linha tracejada: projeção de laje, beiral, marquise, viga etc.</p>
     ${scaled ? `<p style="margin-top:0">Comprimento no desenho: <b>${C.fmt(L)} m</b></p>` : ''}
@@ -2957,19 +3189,30 @@ function lineSheet(ln, isNew) {
     const upd = () => {
       const t = segVal(sh, 'lt'); sh.querySelector('[data-lev]').hidden = t !== 'desnivel'; sh.querySelector('[data-pj]').hidden = t !== 'projecao';
       const a = C.parseNum(n1.value), b = C.parseNum(n2.value);
-      dif.textContent = a != null && b != null ? `Desnível: ${C.fmt(Math.abs(a - b) * 100, 0)} cm` : '';
+      dif.textContent = a != null && b != null ? `Desnível: ${C.fmt(Math.abs(a - b) * 100, 0)} cm (lado ${a > b ? 'A' : a < b ? 'B' : '—'} mais alto)` : '';
+      sh.querySelector('[data-sch]').innerHTML = sideScheme(ln, a, b);
     };
     sh.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setTimeout(upd, 0)));
     n1.oninput = upd; n2.oninput = upd; upd();
+    sh.querySelector('[data-swap]').onclick = () => { const t = n1.value; n1.value = n2.value; n2.value = t; upd(); };
+    const save = () => {
+      ln.type = segVal(sh, 'lt'); lastLineType = ln.type;
+      ln.n1 = ln.type === 'desnivel' ? C.parseNum(n1.value) : null; ln.n2 = ln.type === 'desnivel' ? C.parseNum(n2.value) : null;
+    };
+    for (const [attr, key] of [['data-m1', 'p1'], ['data-m2', 'p2']]) {
+      const b = sh.querySelector('[' + attr + ']'); if (!b) continue;
+      b.onclick = () => {
+        pushUndo(); save(); changed();
+        const m = C.levelMarks(P).find((q) => q.kind === 'line' && q.o === ln && q.key === key); if (!m) return;
+        sel = { type: 'lev', key: levKey(m) };
+        askMove('Toque no novo lugar do nível do lado ' + (key === 'p1' ? 'A' : 'B'), 'Nível movido.', (w) => setLevPos(m, w));
+      };
+    }
+    const au = sh.querySelector('[data-auto]'); if (au) au.onclick = () => { pushUndo(); save(); delete ln.p1; delete ln.p2; changed(); lineSheet(ln); };
     setTimeout(() => centerSeg(ln.a, ln.b, true, true), 30);
     const x = sh.querySelector('[data-x]'); if (x) x.onclick = () => { P.lines = P.lines.filter((q) => q !== ln); undoS.pop(); sel = null; closeSheet(); changed(); };
     const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); P.lines = P.lines.filter((q) => q !== ln); sel = null; closeSheet(); changed(); };
-    sh.querySelector('[data-ok]').onclick = () => {
-      if (!isNew) pushUndo();
-      ln.type = segVal(sh, 'lt'); lastLineType = ln.type;
-      ln.n1 = ln.type === 'desnivel' ? C.parseNum(n1.value) : null; ln.n2 = ln.type === 'desnivel' ? C.parseNum(n2.value) : null;
-      sel = null; closeSheet(); changed();
-    };
+    sh.querySelector('[data-ok]').onclick = () => { if (!isNew) pushUndo(); save(); sel = null; closeSheet(); changed(); };
   }, () => { sel = null; render(); });
 }
 const ROOM_NAMES = ['SALA', 'QUARTO', 'SUÍTE', 'COZINHA', 'BWC', 'ÁREA DE SERVIÇO', 'VARANDA', 'CIRCULAÇÃO', 'GARAGEM', 'DEPÓSITO', 'ESCRITÓRIO', 'RECEPÇÃO', 'SALA DE AULA', 'COPA', 'ALMOXARIFADO', 'HALL'];
@@ -2986,16 +3229,21 @@ function labelSheet(lb, auto) {
     <div class="f"><span class="lab">Área interna</span><p style="margin:10px 0 0;color:var(--ink)">${ri && scaled ? '<b>' + C.fmt(ri.area) + ' m²</b>' : 'aparece após a 1ª medida'}</p></div></div>` : ''}
     <div class="f"><span class="lab">Tamanho</span>${segHTML('h', [['0.12', 'Pequeno'], ['0.2', 'Médio'], ['0.3', 'Grande']], String(lb.h || 0.2))}</div>
     ${auto ? '<p>O texto fica no centro do ambiente e acompanha as mudanças de medida. Para não perguntar mais ao fechar ambientes, use "Não perguntar".</p>' : ''}
-    ${!isNew ? `<div class="acts" style="margin-top:0"><button class="pill" data-mv>Mover texto</button>${lb.room && (lb.ox || lb.oy) ? '<button class="pill" data-ctr>Voltar ao centro</button>' : ''}</div><p style="margin-top:6px">Ou arraste o texto direto no desenho (ferramentas Texto ou Editar).</p>` : ''}
+    ${!isNew ? `<div class="acts" style="margin-top:0;flex-wrap:wrap"><button class="pill" data-mv>Mover texto</button>${lb.level != null ? '<button class="pill" data-mvl>Mover nível</button>' : ''}${lb.lv ? '<button class="pill" data-join>Nível junto ao texto</button>' : ''}${lb.room && (lb.ox || lb.oy) ? '<button class="pill" data-ctr>Voltar ao centro</button>' : ''}</div><p style="margin-top:6px">Ou arraste o texto ou a marca de nível direto no desenho (ferramentas Texto ou Editar).</p>` : ''}
     <div class="acts">${auto ? '<button class="pill" data-never>Não perguntar</button><button class="pill" data-x>Pular</button>' : isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
     bindSegs(sh);
     const inp = sh.querySelector('#iTx');
     if (isNew) setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
     const mvb = sh.querySelector('[data-mv]'); if (mvb) mvb.onclick = () => {
-      labelFor = lb; sel = { type: 'label', id: lb.id }; closeSheet(); render();
-      $('#hint').textContent = 'Toque no novo lugar do texto "' + (lb.text || 'nível') + '" (dá para mover e dar zoom antes).';
-      toast('Toque no novo lugar do texto.');
+      sel = { type: 'label', id: lb.id };
+      askMove('Toque no novo lugar do texto "' + (lb.text || 'nível') + '"', 'Texto movido.', (w) => { const ri = lb.room ? C.roomInfo(P, lb.room) : null; if (ri) { lb.ox = w.x - ri.c.x; lb.oy = w.y - ri.c.y; } else { lb.x = w.x; lb.y = w.y; } });
     };
+    const mvl = sh.querySelector('[data-mvl]'); if (mvl) mvl.onclick = () => {
+      const m = C.levelMarks(P).find((q) => q.kind === 'label' && q.o === lb); if (!m) return;
+      sel = { type: 'lev', key: levKey(m) };
+      askMove('Toque no novo lugar da marca de nível ' + C.fmtLev(lb.level), 'Nível movido.', (w) => setLevPos(m, w));
+    };
+    const jn = sh.querySelector('[data-join]'); if (jn) jn.onclick = () => { pushUndo(); delete lb.lv; changed(); closeSheet(); };
     const ctb = sh.querySelector('[data-ctr]'); if (ctb) ctb.onclick = () => { pushUndo(); lb.ox = 0; lb.oy = 0; changed(); closeSheet(); };
     sh.querySelectorAll('[data-rn]').forEach((b) => b.onclick = () => {
       const base = b.dataset.rn, same = P.labels.filter((q) => q !== lb && q.text && q.text.replace(/\s+\d+$/, '') === base).length;
@@ -3094,7 +3342,9 @@ function helpSheet() {
     <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Para mudar o lugar do texto, arraste-o com a ferramenta Texto ou Editar, ou toque nele e use "Mover texto".</li>
     <li><b>Anotações (botão do bloco de notas no topo):</b> escreva ou dite (microfone do teclado) observações do levantamento. Os botões rápidos (Fissura, Infiltração, Foto nº…) adiantam o texto. "Salvar e marcar no desenho" pede um toque no lugar: aparece um balão vermelho numerado. Toque no balão para ver ou editar; no modo Editar, arraste-o. No DXF, os balões e a lista numerada saem no layer ANOTACOES. "Compartilhar" manda o texto para WhatsApp, e-mail etc.</li>
     <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
-    <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: informe o nível do lado A e do lado B (marcados no desenho) e o app mostra o desnível em cm; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>
+    <li><b>Selecionar:</b> toque em qualquer objeto (parede, texto, nível, linha, corte, pilar, anotação) em qualquer ferramenta. Se vier o objeto errado, toque de novo no mesmo lugar: o app passa para o próximo que está ali. O selecionado fica com contorno azul tracejado.</li>
+    <li><b>Mover textos e níveis:</b> arraste com as ferramentas Texto ou Editar (os níveis do desnível também com a ferramenta Linha), ou toque no objeto e use "Mover texto" / "Mover nível". Nível afastado da linha ganha uma linha de chamada.</li>
+    <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: a folha mostra um esquema com o lado A e o lado B (as letras também aparecem no desenho); informe o nível de cada lado e o app mostra o desnível em cm. O corte que atravessar a linha mostra o degrau e os níveis do piso; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>
     <li><b>Sem internet:</b> na versão instalada pelo GitHub, abra o app uma vez com internet; a faixa verde "Pronto para usar sem internet" confirma. Depois funciona no modo avião.</li>
     <li><b>Diagonal:</b> confere o esquadro do ambiente (medida entre cantos internos × desenho).</li>
     <li><b>Corte:</b> arraste atravessando a planta. O corte sai abaixo dela com pé-direito, laje, forro ou telhado, peitoris, alturas e cotas.</li>
@@ -3103,7 +3353,7 @@ function helpSheet() {
     <li><b>Conferir:</b> lista as medidas que não batem com o desenho e as diagonais.</li>
     <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, NIVEIS, DESNIVEL, PROJECAO (tracejada), LINHAS, ANOTACOES, INFO.</li></ol>
     <p>Dois dedos: mover e zoom. Desfazer e refazer no topo. No modo Editar, arraste pontos, pilares e textos.</p>
-    <p>Croqui de Campo · versão 1.2</p>
+    <p>Croqui de Campo · versão 1.3</p>
     <div class="acts"><button class="pill pri" data-ok>Entendi</button></div>`, (sh) => { sh.querySelector('[data-ok]').onclick = closeSheet; });
 }
 
@@ -3219,6 +3469,7 @@ $('#bInstall').onclick = async () => { if (!installEvt) return; installEvt.promp
 renderHome();
 initCloud();
 window.addEventListener('pagehide', () => { if (P) { P.updatedAt = Date.now(); mem[P.id] = P; writeLocal(); } });
+window.__croquiTest = { toS: (w) => toS(w), levelMarks: () => C.levelMarks(P) };
 }
 
 </script>

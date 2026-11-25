@@ -1,6 +1,6 @@
 /* Croqui de Campo: abre direto do aparelho (funciona sem internet ou com sinal fraco)
    e busca a versão nova em segundo plano quando há conexão. */
-const V = 'croqui-v4';
+const V = 'croqui-v6';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(V).then((c) => Promise.all(FILES.map((f) => fetch(f, { cache: 'reload' }).then((r) => { if (r.ok) return c.put(f, r); }).catch(() => {})))));

@@ -56,8 +56,8 @@ svg.i{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stro
 .pill{height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--line);font-weight:600;font-size:15px}
 .pill:disabled{opacity:.4}
 .pill.pri{background:var(--accent);border-color:var(--accent);color:var(--onacc)}
-.tools{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-.tools button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 8px;font-size:11.5px;color:var(--muted);min-height:56px}
+.tools{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tools button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 8px;font-size:10.5px;color:var(--muted);min-height:56px}
 .tools button[aria-pressed=true]{color:var(--accent);font-weight:600;box-shadow:inset 0 3px 0 var(--accent)}
 /* folha inferior */
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.08)}
@@ -95,12 +95,15 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
 #toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:15px;max-width:88vw;text-align:center;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 #toast.on{opacity:1}
 @media (prefers-reduced-motion:reduce){#toast{transition:none}}
-@media (min-width:900px){.tools{grid-template-columns:repeat(6,112px);justify-content:center}}
+@media (min-width:900px){.tools{grid-template-columns:repeat(7,104px);justify-content:center}}
 #fbar{position:absolute;display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px;box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:2}
 #fbar button{height:40px;padding:0 10px;border-radius:8px;font-size:14px;font-weight:600;white-space:nowrap}
 #fbar button:active{background:var(--line)}
 #fbar .danger{color:var(--red)}
 .okt{color:var(--ok);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.chips button{border:1px solid var(--line);border-radius:999px;padding:0 12px;min-height:38px;font-size:13px;font-weight:600}
+.chips button:active{background:var(--line)}
 #bIma{position:relative;width:40px}
 #bIma[aria-pressed=true]{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
 #bIma .ima-t{position:absolute;bottom:1px;left:0;right:0;font-size:9px;font-weight:700;text-align:center}
@@ -127,6 +130,7 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
   <div class="cards" id="cards"></div>
   <p><button class="linkbtn" id="bImport">Importar backup (.json)</button></p>
   <p><button class="linkbtn" id="bInstall" hidden>Instalar o app neste celular</button></p>
+  <p id="offStat" style="font-size:14px;margin:4px 0 0"></p>
   <input type="file" id="fImport" accept=".json,application/json" hidden>
   <button class="fab" id="bNew"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo levantamento</button>
 </section>
@@ -150,6 +154,7 @@ ol.help{padding-left:20px;margin:0 0 12px}ol.help li{margin:6px 0}
     <button data-mode="pilar"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="5" width="8" height="14" fill="currentColor" stroke="none"/></svg>Pilar</button>
     <button data-mode="texto"><svg class="i" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>Texto</button>
     <button data-mode="diag"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"/><path d="M4 19L20 5" stroke-dasharray="2 2.5"/></svg>Diagonal</button>
+    <button data-mode="linha"><svg class="i" viewBox="0 0 24 24"><path d="M3 15h18" /><path d="M6 15l-2 4M11 15l-2 4M16 15l-2 4M21 15l-2 4" stroke-width="1.2"/><circle cx="8" cy="8" r="2.5"/><path d="M4.5 8h7M8 4.5v7"/></svg>Linha</button>
     <button data-mode="corte"><svg class="i" viewBox="0 0 24 24"><path d="M3 12h18" stroke-dasharray="5 2 1.5 2"/><path d="M4 12V6M20 12V6M2 8l2-2 2 2M18 8l2-2 2 2"/></svg>Corte</button>
   </nav>
 </section>
@@ -170,6 +175,7 @@ const Core = (() => {
   let seq = 0;
   const uid = (p) => p + Date.now().toString(36).slice(-5) + (seq++).toString(36) + Math.random().toString(36).slice(2, 5);
   const fmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace('.', ',');
+  const fmtLev = (v) => Math.abs(v) < 0.005 ? '±0,00' : (v > 0 ? '+' : '-') + fmt(Math.abs(v));
   const parseNum = (s) => {
     if (s === null || s === undefined) return null;
     const t = String(s).trim().replace(/\s/g, '').replace(',', '.');
@@ -191,14 +197,14 @@ const Core = (() => {
       v: 4, id: uid('L'), name: name || 'Levantamento',
       info: { obra: '', local: '', coord: '', data: new Date().toISOString().slice(0, 10), resp: '', obs: '' },
       settings: { t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10, roof: { aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' } },
-      nodes: [], walls: [], pillars: [], labels: [], cuts: [],
+      nodes: [], walls: [], pillars: [], labels: [], cuts: [], lines: [],
       createdAt: Date.now(), updatedAt: Date.now()
     };
   }
 
   /* compatibiliza levantamentos salvos em versões anteriores */
   function normalize(p) {
-    p.nodes = p.nodes || []; p.walls = p.walls || []; p.pillars = p.pillars || []; p.labels = p.labels || []; p.cuts = p.cuts || [];
+    p.nodes = p.nodes || []; p.walls = p.walls || []; p.pillars = p.pillars || []; p.labels = p.labels || []; p.cuts = p.cuts || []; p.lines = p.lines || [];
     p.info = p.info || {};
     p.settings = Object.assign({ t: 0.15, ref: 'interna', pd: 2.80, top: 'laje', lajeT: 0.10 }, p.settings || {});
     p.settings.roof = Object.assign({ aguas: 2, i: 0.30, beiral: 0.50, cum: 'H', queda: 'baixo', forro: true, telha: 'Telha cerâmica' }, p.settings.roof || {});
@@ -378,6 +384,7 @@ const Core = (() => {
     const mv = (o) => { const x = T[0] * o.x + T[1] * o.y + T[2], y = T[3] * o.x + T[4] * o.y + T[5]; o.x = x; o.y = y; };
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } else mv(pl); });
     p.labels.forEach(mv);
+    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
     (p.cuts || []).forEach((c) => {
       const hz = Math.abs(c.a.y - c.b.y) < 1e-6, vt = Math.abs(c.a.x - c.b.x) < 1e-6;
       mv(c.a); mv(c.b);
@@ -396,6 +403,7 @@ const Core = (() => {
     const sc = (o) => { o.x = O.x + (o.x - O.x) * k; o.y = O.y + (o.y - O.y) * k; };
     p.nodes.forEach(sc); p.pillars.forEach(sc); p.labels.forEach(sc);
     (p.cuts || []).forEach((c) => { sc(c.a); sc(c.b); });
+    (p.lines || []).forEach((l) => { sc(l.a); sc(l.b); });
     for (const x of p.walls) for (const o of x.ops || []) { if (x.len == null) { o.d *= k; } }
   }
 
@@ -711,7 +719,50 @@ const Core = (() => {
     });
     // cortes
     if (opts.cortes !== false && (p.cuts || []).length) sections(p, prims, nm, ws, T, L);
-    for (const lb of p.labels) T('TEXTOS', lb.x, lb.y, lb.h || 0.2, lb.text, 0);
+    const scaled = p.walls.some((w) => w.len != null);
+    // símbolo de nível: círculo com cruz e dois quadrantes cheios + cota de nível ao lado
+    const levMark = (layer, x, y, v, hh) => {
+      const r = Math.max(0.06, hh * 0.55);
+      prims.push({ type: 'circle', layer, c: { x, y }, r });
+      L(layer, { x: x - r * 1.35, y }, { x: x + r * 1.35, y }); L(layer, { x, y: y - r * 1.35 }, { x, y: y + r * 1.35 });
+      prims.push({ type: 'solid', layer, pts: [{ x, y }, { x: x + r, y }, { x: x + r * 0.7071, y: y + r * 0.7071 }, { x, y: y + r }] });
+      prims.push({ type: 'solid', layer, pts: [{ x, y }, { x: x - r, y }, { x: x - r * 0.7071, y: y - r * 0.7071 }, { x, y: y - r }] });
+      const t = fmtLev(v);
+      T(layer, x + r * 1.6 + t.length * hh * 0.33, y, hh, t, 0);
+    };
+    for (const lb of p.labels) {
+      const ri = lb.room ? roomInfo(p, lb.room) : null;
+      const x = ri ? ri.c.x + (lb.ox || 0) : lb.x, y = ri ? ri.c.y + (lb.oy || 0) : lb.y, h = lb.h || 0.2;
+      const lines = [];
+      if (lb.text) lines.push([lb.text, h]);
+      if (ri && lb.showArea !== false && scaled) lines.push(['A = ' + fmt(ri.area) + ' m²', h * 0.6]);
+      if (lb.obs) lines.push([lb.obs, h * 0.55]);
+      const hasLev = lb.level != null && Number.isFinite(lb.level);
+      if (hasLev) lines.push([null, h * 0.6]);
+      const tot = lines.reduce((s2, l) => s2 + l[1] * 1.45, 0);
+      let yy = y + tot / 2;
+      for (const [t, hh] of lines) {
+        yy -= hh * 1.45 / 2;
+        if (t == null) { const tw = fmtLev(lb.level).length * hh * 0.66 + hh * 1.5; levMark('NIVEIS', x - tw / 2 + hh * 0.55, yy, lb.level, hh); }
+        else T('TEXTOS', x, yy, hh, t, 0);
+        yy -= hh * 1.45 / 2;
+      }
+    }
+    // linhas que não são parede: desnível (com o nível de cada lado), projeção (tracejada) e outras
+    for (const ln of p.lines || []) {
+      const A = ln.a, B = ln.b, D = sub(B, A); if (len(D) < 1e-6) continue;
+      if (ln.type === 'projecao') { prims.push({ type: 'line', layer: 'PROJECAO', a: A, b: B, dash: true, ref: ln.id }); continue; }
+      if (ln.type !== 'desnivel') { prims.push({ type: 'line', layer: 'LINHAS', a: A, b: B, ref: ln.id }); continue; }
+      prims.push({ type: 'line', layer: 'DESNIVEL', a: A, b: B, ref: ln.id });
+      const u = unit(D), n = perp(u), Lm = len(D), M = add(A, mul(u, Math.min(Lm / 2, Math.max(0.5, Lm * 0.3)))), hh = 0.14;
+      for (const [v, sg] of [[ln.n1, 1], [ln.n2, -1]]) {
+        if (v == null) continue;
+        const ns = mul(n, sg), r = hh * 0.55, gw = r * 2.6 + fmtLev(v).length * hh * 0.66, gh = r * 2.7;
+        const q = add(M, mul(ns, 0.12 + Math.abs(ns.x) * 0 + Math.abs(ns.y) * gh / 2 + 0.05)); // grupo inteiro do lado certo da linha
+        const x0 = q.x - gw / 2 + ns.x * gw / 2;
+        levMark('NIVEIS', x0 + r * 1.35, q.y, v, hh);
+      }
+    }
     return { prims, quads, holes, corners };
   }
   function pillarCorners(pl) {
@@ -736,7 +787,7 @@ const Core = (() => {
   function planBox(p) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); });
+    shapePts(p).forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.cuts || []).forEach((c) => { inc(c.a); inc(c.b); }); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); });
     return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
@@ -922,7 +973,7 @@ const Core = (() => {
   function bbox(p, geo) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const inc = (P) => { x0 = Math.min(x0, P.x); y0 = Math.min(y0, P.y); x1 = Math.max(x1, P.x); y1 = Math.max(y1, P.y); };
-    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc);
+    p.nodes.forEach(inc); p.pillars.forEach(inc); p.labels.forEach(inc); (p.lines || []).forEach((l) => { inc(l.a); inc(l.b); });
     if (geo) for (const q of geo.prims) { if (q.a) { inc(q.a); inc(q.b); } }
     if (x0 === Infinity) return null;
     return { x0, y0, x1, y1 };
@@ -933,7 +984,8 @@ const Core = (() => {
     ['PAREDES', 7], ['ESQUADRIAS', 4], ['PILARES', 1], ['COTAS', 3], ['COTAS-ESTIMADAS', 30], ['COTAS-DIVERGENTES', 6],
     ['VERIFICACAO', 6], ['TEXTOS', 2], ['INFO', 8], ['CORTES', 5],
     ['CORTE-PAREDES', 7], ['CORTE-PAREDES-HACH', 9], ['CORTE-LAJE', 7], ['CORTE-LAJE-HACH', 9], ['CORTE-PISO', 7], ['CORTE-TELHADO', 1], ['CORTE-TELHADO-HACH', 31],
-    ['COBOGO', 33], ['GRADIL', 8], ['VIDRO', 4], ['CORTE-COBOGO', 33], ['CORTE-COBOGO-HACH', 51], ['CORTE-GRADIL', 8], ['CORTE-VIDRO', 4]
+    ['COBOGO', 33], ['GRADIL', 8], ['VIDRO', 4], ['CORTE-COBOGO', 33], ['CORTE-COBOGO-HACH', 51], ['CORTE-GRADIL', 8], ['CORTE-VIDRO', 4],
+    ['NIVEIS', 2], ['DESNIVEL', 30], ['PROJECAO', 8, 'DASHED'], ['LINHAS', 8]
   ];
   const enc = (s) => String(s).replace(/[\r\n]+/g, ' ').replace(/[^\x20-\x7e]/g, (ch) => '\\U+' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0'));
   const num = (v) => (Math.round(v * 1e6) / 1e6).toString();
@@ -948,12 +1000,13 @@ const Core = (() => {
     g(9, '$INSUNITS'); g(70, 6);
     g(0, 'ENDSEC');
     g(0, 'SECTION'); g(2, 'TABLES');
-    g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 1);
+    g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 2);
     g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, 0); g(3, 'Solid line'); g(72, 65); g(73, 0); g(40, 0.0);
+    g(0, 'LTYPE'); g(2, 'DASHED'); g(70, 0); g(3, '__ __ __'); g(72, 65); g(73, 2); g(40, 0.375); g(49, 0.25); g(49, -0.125);
     g(0, 'ENDTAB');
     g(0, 'TABLE'); g(2, 'LAYER'); g(70, LAYERS.length + 1);
     g(0, 'LAYER'); g(2, '0'); g(70, 0); g(62, 7); g(6, 'CONTINUOUS');
-    for (const [nme, col] of LAYERS) { g(0, 'LAYER'); g(2, nme); g(70, 0); g(62, col); g(6, 'CONTINUOUS'); }
+    for (const [nme, col, lt] of LAYERS) { g(0, 'LAYER'); g(2, nme); g(70, 0); g(62, col); g(6, lt || 'CONTINUOUS'); }
     g(0, 'ENDTAB');
     g(0, 'TABLE'); g(2, 'STYLE'); g(70, 1);
     g(0, 'STYLE'); g(2, 'STANDARD'); g(70, 0); g(40, 0.0); g(41, 1.0); g(50, 0.0); g(71, 0); g(42, 0.2); g(3, 'txt'); g(4, '');
@@ -977,6 +1030,8 @@ const Core = (() => {
         g(11, num(b.x)); g(21, num(b.y)); g(31, 0);
         g(12, num(d.x)); g(22, num(d.y)); g(32, 0);
         g(13, num(c.x)); g(23, num(c.y)); g(33, 0);
+      } else if (q.type === 'circle') {
+        g(0, 'CIRCLE'); g(8, q.layer); g(10, num(q.c.x)); g(20, num(q.c.y)); g(30, 0); g(40, num(q.r));
       } else if (q.type === 'text') text(q.layer, q.x, q.y, q.h, q.text, q.rot);
     }
     // bloco de informações do levantamento (abaixo do desenho)
@@ -1186,7 +1241,8 @@ const Core = (() => {
     }
     for (const lb of Array.isArray(data && data.labels) ? data.labels : []) {
       const x = num(lb.x), y = num(lb.y); if (x == null || y == null || !lb.text) continue;
-      p.labels.push({ id: uid('t'), x, y, text: String(lb.text).slice(0, 40), h: 0.2 });
+      const f = faceAt(p, { x, y });
+      p.labels.push({ id: uid('t'), x, y, text: String(lb.text).slice(0, 40), h: 0.2, room: f ? f.ids : null, showArea: true });
     }
     for (const pl of Array.isArray(data && data.pillars) ? data.pillars : []) {
       const x = num(pl.x), y = num(pl.y); if (x == null || y == null) continue;
@@ -1253,12 +1309,106 @@ const Core = (() => {
     const mv = (o) => { const x = Tf[0] * o.x + Tf[1] * o.y + Tf[2], y = Tf[3] * o.x + Tf[4] * o.y + Tf[5]; o.x = x; o.y = y; };
     p.pillars.forEach((pl, k) => { if (pilNode[k] >= 0) { pl.x = p.nodes[pilNode[k]].x; pl.y = p.nodes[pilNode[k]].y; } });
     p.labels.forEach(mv);
+    (p.lines || []).forEach((l) => { mv(l.a); mv(l.b); });
     return T - L;
   }
   /* comprimento atual da parede medido pela mesma referência da medida (face interna, eixo ou externa) */
   function faceLength(p, w) {
     const nm = nodeMap(p), A = nm.get(w.a), B = nm.get(w.b);
     return len(sub(B, A)) - refShift(p, w, w.a, nm) - refShift(p, w, w.b, nm);
+  }
+
+  /* ---------- AMBIENTES: polígonos fechados formados pelas paredes ---------- */
+  function faces(p) {
+    const nm = nodeMap(p), adj = new Map();
+    for (const w of p.walls) {
+      if (w.kind === 'verif' || w.a === w.b || !nm.get(w.a) || !nm.get(w.b)) continue;
+      for (const [u, v] of [[w.a, w.b], [w.b, w.a]]) { if (!adj.has(u)) adj.set(u, []); if (!adj.get(u).includes(v)) adj.get(u).push(v); }
+    }
+    const ang = (u, v) => { const U = nm.get(u), V = nm.get(v); return Math.atan2(V.y - U.y, V.x - U.x); };
+    for (const [u, list] of adj) list.sort((a, b) => ang(u, a) - ang(u, b));
+    const seen = new Set(), out = [];
+    for (const [u0, list] of adj) for (const v0 of list) {
+      if (seen.has(u0 + '>' + v0)) continue;
+      const cyc = []; let u = u0, v = v0, guard = 0;
+      while (!seen.has(u + '>' + v) && guard++ < 2000) {
+        seen.add(u + '>' + v); cyc.push(u);
+        const L = adj.get(v), i = L.indexOf(u), w = L[(i - 1 + L.length) % L.length];
+        u = v; v = w;
+      }
+      if (cyc.length >= 3) {
+        const pts = cyc.map((id) => nm.get(id)); let a = 0;
+        for (let i = 0; i < pts.length; i++) { const P = pts[i], Q = pts[(i + 1) % pts.length]; a += P.x * Q.y - Q.x * P.y; }
+        if (a / 2 > 1e-4 && new Set(cyc).size === cyc.length) out.push({ ids: cyc, area: a / 2 });
+      }
+    }
+    return out; // só faces internas (sentido anti-horário)
+  }
+  function inPoly(pt, pts) {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < (b.x - a.x) * (pt.y - a.y) / (b.y - a.y) + a.x) c = !c;
+    }
+    return c;
+  }
+  function faceAt(p, pt) {
+    const nm = nodeMap(p); let best = null;
+    for (const f of faces(p)) if (inPoly(pt, f.ids.map((id) => nm.get(id))) && (!best || f.area < best.area)) best = f;
+    return best;
+  }
+  const roomKey = (ids) => ids.slice().sort().join('|');
+  /* área interna do ambiente: polígono dos eixos recuado meia espessura de cada parede (+/- segmentos das paredes curvas) */
+  function roomInfo(p, ids) {
+    const nm = nodeMap(p);
+    if (!ids || ids.length < 3 || ids.some((id) => !nm.get(id))) return null;
+    let pts = ids.map((id) => nm.get(id)), a = 0;
+    for (let i = 0; i < pts.length; i++) { const P = pts[i], Q = pts[(i + 1) % pts.length]; a += P.x * Q.y - Q.x * P.y; }
+    if (a < 0) { ids = ids.slice().reverse(); pts = pts.slice().reverse(); }
+    const k = pts.length, wallOf = (u, v) => p.walls.find((w) => w.kind !== 'verif' && ((w.a === u && w.b === v) || (w.a === v && w.b === u)));
+    const lines = [];
+    let seg = 0;
+    for (let i = 0; i < k; i++) {
+      const A = pts[i], B = pts[(i + 1) % k], w = wallOf(ids[i], ids[(i + 1) % k]), t = w ? w.t / 2 : 0;
+      const u = unit(sub(B, A)), nIn = perp(u); // interior à esquerda (anti-horário)
+      lines.push({ P: add(A, mul(nIn, t)), u });
+      const ai = w ? arcInfo(p, w, nm) : null;
+      if (ai) { // segmento circular: soma se a curva vai para fora, subtrai se entra no ambiente
+        const th = Math.abs(ai.sweep), r = ai.R + (dot(sub(ai.Pm, mul(add(A, B), 0.5)), nIn) > 0 ? t : -t), sa = r * r / 2 * (th - Math.sin(th));
+        seg += dot(sub(ai.Pm, mul(add(A, B), 0.5)), nIn) > 0 ? -sa : sa;
+      }
+    }
+    const q = [];
+    for (let i = 0; i < k; i++) {
+      const l1 = lines[(i - 1 + k) % k], l2 = lines[i], X = lineX(l1.P, l1.u, l2.P, l2.u);
+      q.push(X || l2.P);
+    }
+    let ai2 = 0, cx = 0, cy = 0;
+    for (let i = 0; i < k; i++) { const P = q[i], Q = q[(i + 1) % k], c = P.x * Q.y - Q.x * P.y; ai2 += c; cx += (P.x + Q.x) * c; cy += (P.y + Q.y) * c; }
+    ai2 /= 2;
+    const cen = Math.abs(ai2) > 1e-9 ? { x: cx / (6 * ai2), y: cy / (6 * ai2) } : pts[0];
+    return { area: Math.max(0, ai2 + seg), c: cen, inner: q };
+  }
+  /* textos de ambiente cujo ambiente mudou (ex.: dividido por uma parede nova) passam para o ambiente
+     resultante maior que ainda não tem nome; se não houver, viram texto solto no mesmo lugar */
+  function reconcileRooms(p) {
+    const fs = faces(p), keys = new Map(fs.map((f) => [roomKey(f.ids), f])), nm = nodeMap(p);
+    const taken = new Set(p.labels.filter((lb) => lb.room && keys.has(roomKey(lb.room))).map((lb) => roomKey(lb.room)));
+    let changedAny = false;
+    for (const lb of p.labels) {
+      if (!lb.room || keys.has(roomKey(lb.room))) continue;
+      changedAny = true;
+      const ok = lb.room.every((id) => nm.get(id));
+      const oldPts = ok ? lb.room.map((id) => nm.get(id)) : null, oldC = ok ? roomInfo(p, lb.room) : null;
+      let best = null;
+      if (oldPts) for (const f of fs) {
+        const k = roomKey(f.ids); if (taken.has(k)) continue;
+        const ri = roomInfo(p, f.ids); if (ri && inPoly(ri.c, oldPts) && (!best || f.area > best.area)) best = f;
+      }
+      if (best) { lb.room = best.ids; lb.ox = 0; lb.oy = 0; taken.add(roomKey(best.ids)); }
+      else { if (oldC) { lb.x = oldC.c.x; lb.y = oldC.c.y; } lb.room = null; }
+    }
+    return changedAny;
   }
   /* ---------- edição ---------- */
   function splitWall(p, w, P) {
@@ -1282,7 +1432,7 @@ const Core = (() => {
     p.nodes = p.nodes.filter((n) => used.has(n.id));
   }
 
-  return { arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
+  return { fmtLev, reconcileRooms, faces, faceAt, roomInfo, roomKey, arcInfo, wallDist, wallMid, wallH, mesh3d, OP_MODELS, opModel, applyLength, faceLength, scaleTo, fromSketch, normalize, pillarCorners, planBox, verifEnds, uid, fmt, parseNum, newProject, nodeMap, paredes, wallNumber, classifyOri, adjust, report, geometry, bbox, toDXF, zip, splitWall, removeOrphans, axisTarget, refShift, adjT, sub, add, mul, dot, cross, len, unit, perp };
 })();
 
 
@@ -1523,7 +1673,7 @@ function pushUndo() { undoS.push(snapshot()); if (undoS.length > 80) undoS.shift
 function restore(s) { const o = JSON.parse(s); Object.assign(P, o); sel = null; }
 function undo() { if (!undoS.length) return; redoS.push(snapshot()); restore(undoS.pop()); changed(); }
 function redo() { if (!redoS.length) return; undoS.push(snapshot()); restore(redoS.pop()); changed(); }
-function changed() { persist(); render(); updStatus(); updTop(); }
+function changed() { if (P) C.reconcileRooms(P); persist(); render(); updStatus(); updTop(); }
 
 const cv = $('#cv'), ctx = cv.getContext('2d');
 const toW = (sx, sy) => ({ x: (sx - view.ox) / view.s, y: (view.oy - sy) / view.s });
@@ -1665,9 +1815,9 @@ $('#bIma').onclick = () => { ima = IMA_STEPS[(IMA_STEPS.indexOf(ima) + 1) % IMA_
 updIma();
 const gridSnap = (w) => ima ? { x: Math.round(w.x / ima) * ima, y: Math.round(w.y / ima) * ima } : w;
 function clearDrawing() {
-  if (!P.walls.length && !P.pillars.length && !P.labels.length && !P.cuts.length) { toast('O desenho já está vazio.'); return; }
+  if (!P.walls.length && !P.pillars.length && !P.labels.length && !P.cuts.length && !(P.lines || []).length) { toast('O desenho já está vazio.'); return; }
   confirmSheet('Apagar todo o desenho?', 'Paredes, medidas, portas, janelas, pilares, textos, diagonais e cortes deste levantamento serão apagados. Os dados do levantamento (obra, endereço...) continuam. Dá para recuperar com Desfazer (↶).', 'Apagar desenho', () => {
-    pushUndo(); P.nodes = []; P.walls = []; P.pillars = []; P.labels = []; P.cuts = []; sel = null; changed(); setMode('parede'); toast('Desenho apagado. Use Desfazer (↶) se precisar.');
+    pushUndo(); P.nodes = []; P.walls = []; P.pillars = []; P.labels = []; P.cuts = []; P.lines = []; sel = null; changed(); setMode('parede'); toast('Desenho apagado. Use Desfazer (↶) se precisar.');
   });
 }
 $('#bAdjust').onclick = doAdjust;
@@ -1678,9 +1828,10 @@ const HINTS = {
   parede: 'Desenhe à mão livre: um traço reto vira uma parede; contornando o ambiente sem tirar o dedo, cada lado vira uma parede. Dois dedos movem e dão zoom.',
   editar: 'Toque numa parede para informar a medida, aberturas e espessura. Arraste os pontos para corrigir o croqui.',
   pilar: 'Toque onde fica o pilar (no canto ele encaixa e alinha com a parede). Toque num pilar para selecionar; toque de novo para girar 90°.',
-  texto: 'Toque para escrever o nome do ambiente ou uma observação.',
+  texto: 'Toque dentro de um ambiente para dar nome (com a área) ou em qualquer lugar para uma observação. Toque num texto para editar.',
   diag: 'Arraste entre dois cantos para lançar uma diagonal ou cota total de verificação.',
-  corte: 'Arraste atravessando a planta onde quer o corte. O desenho do corte aparece abaixo da planta.'
+  corte: 'Arraste atravessando a planta onde quer o corte. O desenho do corte aparece abaixo da planta.',
+  linha: 'Arraste para traçar uma linha que não é parede: desnível de piso (com o nível de cada lado), projeção ou outra. Toque numa linha para editar.'
 };
 function setMode(m) {
   mode = m;
@@ -1714,7 +1865,7 @@ function readColors() {
   colors = { paper: res('--paper'), ink: res('--ink'), muted: res('--muted'), grid: res('--grid'), grid2: res('--grid2'), wall: res('--wall'), accent: res('--accent'), red: res('--red'), orange: res('--orange'), cyan: res('--cyan'), mag: res('--mag'), ok: res('--ok') };
   probe.remove(); v;
 }
-const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink }[l] || colors.ink);
+const layerColor = (l) => ({ COBOGO: colors.ink, GRADIL: colors.ink, VIDRO: colors.cyan, 'CORTE-COBOGO': colors.ink, 'CORTE-COBOGO-HACH': colors.wall, 'CORTE-GRADIL': colors.ink, 'CORTE-VIDRO': colors.cyan, PAREDES: colors.ink, ESQUADRIAS: colors.cyan, PILARES: colors.red, COTAS: colors.ink, 'COTAS-ESTIMADAS': colors.orange, 'COTAS-DIVERGENTES': colors.mag, CORTES: colors.accent, 'CORTE-PAREDES-HACH': colors.wall, 'CORTE-LAJE-HACH': colors.wall, 'CORTE-TELHADO': colors.red, 'CORTE-TELHADO-HACH': colors.red, VERIFICACAO: colors.mag, TEXTOS: colors.ink, NIVEIS: colors.ink, DESNIVEL: colors.orange, PROJECAO: colors.muted, LINHAS: colors.ink }[l] || colors.ink);
 function resize() {
   const r = $('#stage').getBoundingClientRect();
   dpr = window.devicePixelRatio || 1; W = r.width; H = r.height;
@@ -1768,18 +1919,33 @@ function paint() {
       g.strokeStyle = col; g.lineWidth = (q.layer === 'PAREDES' || q.layer === 'GRADIL') ? 1.6 : 1;
       if (q.layer === 'VERIFICACAO') g.setLineDash([6, 4]);
       if (q.layer === 'CORTES') { g.setLineDash([12, 4, 3, 4]); g.lineWidth = sel && sel.type === 'cut' ? 2.5 : 1.4; }
+      if (q.dash) g.setLineDash([9, 5]);
+      if (q.layer === 'DESNIVEL') g.lineWidth = 2;
+      if (q.ref && sel && sel.type === 'line' && sel.id === q.ref) { g.strokeStyle = colors.accent; g.lineWidth = 3.5; }
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.setLineDash([]);
     } else if (q.type === 'arc') {
       const c = toS(q.c); g.strokeStyle = col; g.lineWidth = 1;
       g.beginPath(); g.arc(c.x, c.y, q.r * view.s, -q.a0 * Math.PI / 180, -q.a1 * Math.PI / 180, true); g.stroke();
     } else if (q.type === 'solid') {
       g.fillStyle = col; poly(q.pts); g.fill();
+    } else if (q.type === 'circle') {
+      const c = toS(q.c); g.strokeStyle = col; g.lineWidth = 1; g.beginPath(); g.arc(c.x, c.y, Math.max(2, q.r * view.s), 0, 7); g.stroke();
     } else if (q.type === 'text') {
       const px = Math.max(10, Math.min(36, q.h * view.s * (q.layer === 'TEXTOS' ? 1 : 1.15)));
       if (q.h * view.s < 3.5 && q.layer !== 'TEXTOS') continue;
       const s = toS(q); g.save(); g.translate(s.x, s.y); g.rotate(-q.rot * Math.PI / 180);
       g.fillStyle = col; g.font = `${q.layer === 'TEXTOS' ? 600 : 500} ${px}px system-ui,sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(q.text, 0, 0); g.restore();
+    }
+  }
+  // linha selecionada: marca os lados A e B (nível de cada lado)
+  const sl = sel && sel.type === 'line' && (P.lines || []).find((x) => x.id === sel.id);
+  if (sl && sl.type === 'desnivel') {
+    const u = C.unit(C.sub(sl.b, sl.a)), n = C.perp(u), M = C.mul(C.add(sl.a, sl.b), 0.5);
+    for (const [k, sg] of [['A', 1], ['B', -1]]) {
+      const q = toS(C.add(M, C.mul(n, sg * 34 / view.s))), q2 = toS(C.add(C.add(M, C.mul(n, sg * 34 / view.s)), C.mul(u, 30 / view.s)));
+      g.fillStyle = colors.accent; g.beginPath(); g.arc(q2.x, q2.y, 11, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.font = '700 12px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k, q2.x, q2.y + .5);
     }
   }
   // números das paredes
@@ -1808,7 +1974,7 @@ function paint() {
   }
   if (sel && (sel.type === 'pillar' || sel.type === 'label')) {
     const o = (sel.type === 'pillar' ? P.pillars : P.labels).find((x) => x.id === sel.id);
-    if (o) { const s = toS(o); g.strokeStyle = colors.accent; g.lineWidth = 2; g.beginPath(); g.arc(s.x, s.y, Math.max(18, Math.max(o.bw || 0, o.bh || 0) * view.s * 0.75), 0, 7); g.stroke(); }
+    if (o) { const s = toS(sel.type === 'label' ? labelPos(o) : o); g.strokeStyle = colors.accent; g.lineWidth = 2; g.beginPath(); g.arc(s.x, s.y, Math.max(18, Math.max(o.bw || 0, o.bh || 0) * view.s * 0.75), 0, 7); g.stroke(); }
   }
   // traço em andamento
   if (drawing && drawing.path.length > 2 && mode === 'parede') {
@@ -1989,7 +2155,9 @@ const ptrs = new Map();
 let pinch = null, drag = null, panning = null, tapInfo = null;
 const pos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const hitPillar = (w) => P.pillars.find((pl) => Math.hypot(pl.x - w.x, pl.y - w.y) < Math.max(22 / view.s, Math.max(pl.bw, pl.bh) / 2 + 6 / view.s));
-const hitLabel = (w) => P.labels.find((lb) => Math.abs(lb.x - w.x) < Math.max(24 / view.s, (lb.text.length * (lb.h || .2) * .32)) && Math.abs(lb.y - w.y) < Math.max(16 / view.s, (lb.h || .2)));
+const labelPos = (lb) => { const ri = lb.room ? C.roomInfo(P, lb.room) : null; return ri ? { x: ri.c.x + (lb.ox || 0), y: ri.c.y + (lb.oy || 0) } : { x: lb.x, y: lb.y }; };
+const hitLabel = (w) => P.labels.find((lb) => { const q = labelPos(lb); return Math.abs(q.x - w.x) < Math.max(28 / view.s, (lb.text.length * (lb.h || .2) * .32)) && Math.abs(q.y - w.y) < Math.max(20 / view.s, (lb.h || .2) * 1.6); });
+const hitLine = (w) => { let best = null, bd = 16 / view.s; for (const c of P.lines || []) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 const hitCut = (w) => { let best = null, bd = 16 / view.s; for (const c of P.cuts) { const r = segDist(w, c.a, c.b); if (r.d < bd) { bd = r.d; best = c; } } return best; };
 
 /* simplificação do traço à mão livre (Ramer-Douglas-Peucker) e limpeza das quinas */
@@ -2051,7 +2219,7 @@ cv.addEventListener('pointerdown', (e) => {
   if (ptrs.size > 2) return;
   tapInfo = { x: p.x, y: p.y, t: Date.now() };
   const w = toW(p.x, p.y);
-  if (mode === 'parede' || mode === 'diag' || mode === 'corte') {
+  if (mode === 'parede' || mode === 'diag' || mode === 'corte' || mode === 'linha') {
     if (mode === 'corte') { drawing = { start: { pt: w }, end: { pt: w }, path: [p] }; render(); return; }
     const st = snap(p.x, p.y, null);
     if (mode === 'diag' && !st.nodeId) { drawing = null; panning = { x: p.x, y: p.y, ox: view.ox, oy: view.oy }; return; }
@@ -2104,6 +2272,9 @@ cv.addEventListener('pointermove', (e) => {
       const sn = snap(p.x, p.y, { pt: drag.o, nodeId: drag.o.id }, false);
       const w = sn.nodeId ? (ima ? gridSnap(toW(p.x, p.y)) : toW(p.x, p.y)) : sn.pt;
       drag.o.x = w.x; drag.o.y = w.y; drag.guides = sn.nodeId ? [] : alignGuides(w, drag.o.id);
+    } else if (drag.type === 'label' && drag.o.room) {
+      const w = toW(p.x, p.y), ri = C.roomInfo(P, drag.o.room);
+      if (ri) { drag.o.ox = w.x - ri.c.x; drag.o.oy = w.y - ri.c.y; } else { drag.o.x = w.x; drag.o.y = w.y; }
     } else { const w = toW(p.x, p.y); drag.o.x = w.x; drag.o.y = w.y; if (drag.type === 'pillar') { const n = nearestNode(w, 16 / view.s); if (n) { drag.o.x = n.x; drag.o.y = n.y; } } }
     render(); return;
   }
@@ -2121,13 +2292,26 @@ function addWall(na, nb) {
   const w = { id: C.uid('w'), a: na.id, b: nb.id, t: P.settings.t, len: null, ref: P.settings.ref, ori: 'L', kind: 'parede', ops: [] };
   P.walls.push(w); return w;
 }
+/* ambiente recém-fechado pelo traço: pergunta o nome (pode pular) */
+let askRooms = true; try { askRooms = localStorage.getItem('croqui_ask_rooms') !== '0'; } catch (e) {}
+const roomKeys = () => new Set(C.faces(P).map((f) => C.roomKey(f.ids)));
+function promptNewRoom(before) {
+  if (!askRooms) return;
+  const named = new Set(P.labels.filter((lb) => lb.room).map((lb) => C.roomKey(lb.room)));
+  const nm = C.nodeMap(P);
+  const fresh = C.faces(P).filter((f) => !before.has(C.roomKey(f.ids)) && !named.has(C.roomKey(f.ids)) && !P.labels.some((lb) => !lb.room && f.ids.length && (() => { const pts = f.ids.map((id) => nm.get(id)); let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const a = pts[i], b = pts[j]; if ((a.y > lb.y) !== (b.y > lb.y) && lb.x < (b.x - a.x) * (lb.y - a.y) / (b.y - a.y) + a.x) c = !c; } return c; })()));
+  if (!fresh.length) return;
+  const f = fresh.sort((a, b) => b.area - a.area)[0], ri = C.roomInfo(P, f.ids);
+  setTimeout(() => labelSheet({ id: null, x: ri ? ri.c.x : 0, y: ri ? ri.c.y : 0, text: '', h: 0.2, room: f.ids, showArea: true, obs: '' }, true), 120);
+}
 function commitStroke(d) {
   const poly = strokePoly(d.path);
+  const before = roomKeys();
   pushUndo();
   if (poly.length <= 2) {
     const na = resolveNode(d.start), nb = resolveNode(d.end);
     if (!addWall(na, nb)) { C.removeOrphans(P); undoS.pop(); }
-    changed(); return;
+    changed(); promptNewRoom(before); return;
   }
   // traço à mão livre com várias quinas: cada trecho vira uma parede
   const first = poly[0], lastP = poly[poly.length - 1];
@@ -2154,7 +2338,7 @@ function commitStroke(d) {
   }
   if (!made) { C.removeOrphans(P); undoS.pop(); }
   else toast(`${made} parede${made > 1 ? 's' : ''} criada${made > 1 ? 's' : ''}${closed ? ' (ambiente fechado)' : ''}.`);
-  changed();
+  changed(); if (made) promptNewRoom(before);
 }
 function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
@@ -2167,7 +2351,7 @@ function endPtr(e) {
     const a = toS(d.start.pt), b = toS(d.end.pt);
     let span = 0; for (const q of d.path) span = Math.max(span, Math.hypot(q.x - d.path[0].x, q.y - d.path[0].y));
     if (span < 18 || e.type === 'pointercancel') {
-      if (wasTap && (mode === 'parede' || mode === 'corte')) tapSelect(p);
+      if (wasTap && (mode === 'parede' || mode === 'corte' || mode === 'linha')) tapSelect(p);
       render(); return;
     }
     if (mode === 'corte') {
@@ -2177,6 +2361,12 @@ function endPtr(e) {
       let nm = 'A'; for (let k = 0; k < 26; k++) { const l = String.fromCharCode(65 + k); if (!used.has(l)) { nm = l; break; } }
       const cut = { id: C.uid('c'), name: nm, a: d.start.pt, b: d.end.pt, flip: false };
       P.cuts.push(cut); changed(); fitAll(); cutSheet(cut, true); return;
+    }
+    if (mode === 'linha') {
+      if (Math.hypot(a.x - b.x, a.y - b.y) < 24) { render(); return; }
+      pushUndo();
+      const ln = { id: C.uid('l'), a: { x: d.start.pt.x, y: d.start.pt.y }, b: { x: d.end.pt.x, y: d.end.pt.y }, type: lastLineType, n1: null, n2: null };
+      P.lines.push(ln); sel = { type: 'line', id: ln.id }; changed(); lineSheet(ln, true); return;
     }
     if (mode === 'diag') {
       if (!d.end.nodeId || d.end.nodeId === d.start.nodeId) { toast('A diagonal precisa ligar dois cantos já desenhados.'); render(); return; }
@@ -2209,7 +2399,12 @@ function endPtr(e) {
     if (!wasTap) return;
     if (mode === 'editar' || mode === 'diag') tapSelect(p);
     else if (mode === 'pilar') { if (sel && sel.type === 'pillar') { sel = null; render(); } else placePillar(p); }
-    else if (mode === 'texto') { const w = toW(p.x, p.y); labelSheet({ id: null, x: w.x, y: w.y, text: '', h: 0.2 }); }
+    else if (mode === 'texto') {
+      const w = toW(p.x, p.y), hl = hitLabel(w);
+      if (hl) { sel = { type: 'label', id: hl.id }; render(); labelSheet(hl); return; }
+      const f = C.faceAt(P, w), taken = f && P.labels.some((lb) => lb.room && C.roomKey(lb.room) === C.roomKey(f.ids));
+      labelSheet({ id: null, x: w.x, y: w.y, text: '', h: 0.2, room: f && !taken ? f.ids : null, showArea: true, obs: '' });
+    }
   }
 }
 cv.addEventListener('pointerup', endPtr);
@@ -2243,6 +2438,7 @@ function tapSelect(p) {
   const w = toW(p.x, p.y);
   const hp = hitPillar(w); if (hp) { sel = { type: 'pillar', id: hp.id }; render(); return; }
   const hc = hitCut(w); if (hc) { sel = { type: 'cut', id: hc.id }; render(); cutSheet(hc); return; }
+  const hn = hitLine(w); if (hn) { sel = { type: 'line', id: hn.id }; render(); lineSheet(hn); return; }
   const cands = wallCandidates(w);
   if (!cands.length) { sel = null; lastTap = null; render(); return; }
   let i = 0;
@@ -2417,6 +2613,9 @@ function restoreView() { if (view0) { Object.assign(view, view0); view0 = null; 
 function centerOn(w, onlyIfHidden) {
   const nm = C.nodeMap(P), A = nm.get(w.a), B = nm.get(w.b);
   if (!A || !B) return;
+  centerSeg(A, B, onlyIfHidden);
+}
+function centerSeg(A, B, onlyIfHidden, fitV) {
   const m = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
   const st = $('#stage').getBoundingClientRect(), sh = $('#sheet');
   const visH = Math.max(80, (sh.hidden ? st.bottom : sh.getBoundingClientRect().top) - st.top);
@@ -2424,8 +2623,8 @@ function centerOn(w, onlyIfHidden) {
   const Ls = Math.hypot(B.x - A.x, B.y - A.y) * view.s;
   if (onlyIfHidden && cur.y > 30 && cur.y < visH - 30 && cur.x > 20 && cur.x < W - 20 && Ls < W * 0.95) return;
   if (!view0) view0 = { ...view };
-  const want = Math.min(W * 0.6, visH * 1.2), Lm = Math.hypot(B.x - A.x, B.y - A.y);
-  if (Lm > 0.05 && (Ls > W * 0.9 || Ls < W * 0.25)) view.s = Math.max(8, Math.min(400, want / Lm));
+  const want = Math.min(W * 0.6, visH * (fitV ? 0.65 : 1.2)), Lm = Math.hypot(B.x - A.x, B.y - A.y);
+  if (Lm > 0.05 && (Ls > W * 0.9 || Ls < W * 0.25 || (fitV && Ls > visH * 0.7))) view.s = Math.max(8, Math.min(400, want / Lm));
   view.ox = W / 2 - m.x * view.s; view.oy = visH / 2 + m.y * view.s; render();
 }
 const OP_ICONS = {
@@ -2604,24 +2803,77 @@ function cutSheet(cut, isNew) {
     sh.querySelector('[data-ok]').onclick = () => { save(); sel = null; closeSheet(); };
   }, () => { sel = null; render(); });
 }
-function labelSheet(lb) {
-  const isNew = !lb.id;
-  openSheet(`<h2>${isNew ? 'Novo texto' : 'Texto'}</h2>
-    <div class="f"><label for="iTx">Texto</label><input id="iTx" value="${esc(lb.text)}" placeholder="ex.: SALA 01, BWC, COZINHA"></div>
-    <div class="f"><span class="lab">Tamanho</span>${segHTML('h', [['0.12', 'Pequeno'], ['0.2', 'Médio'], ['0.3', 'Grande']], String(lb.h || 0.2))}</div>
+let lastLineType = 'desnivel';
+const LINE_TYPES = [['desnivel', 'Desnível'], ['projecao', 'Projeção'], ['outra', 'Outra linha']];
+const levStr = (v) => v == null ? '' : C.fmt(v).replace(/^(?!-)/, v > 0 ? '+' : '');
+function lineSheet(ln, isNew) {
+  const L = Math.hypot(ln.b.x - ln.a.x, ln.b.y - ln.a.y), scaled = P.walls.some((w) => w.len != null);
+  openSheet(`<h2>${isNew ? 'Nova linha' : 'Linha'}</h2>
+    <div class="f"><span class="lab">Tipo</span>${segHTML('lt', LINE_TYPES, ln.type)}</div>
+    <div data-lev ${ln.type === 'desnivel' ? '' : 'hidden'}>
+      <p>Nível do piso de cada lado da linha (em metros). Os lados estão marcados no desenho com <b style="color:var(--accent)">A</b> e <b style="color:var(--accent)">B</b>.</p>
+      <div class="row"><div class="f"><label for="iN1">Nível lado A</label><input id="iN1" inputmode="decimal" value="${esc(levStr(ln.n1))}" placeholder="ex.: 0,00"></div>
+      <div class="f"><label for="iN2">Nível lado B</label><input id="iN2" inputmode="decimal" value="${esc(levStr(ln.n2))}" placeholder="ex.: -0,15"></div></div>
+      <p data-dif style="margin-top:0"></p>
+    </div>
+    <p data-pj ${ln.type === 'projecao' ? '' : 'hidden'}>Linha tracejada: projeção de laje, beiral, marquise, viga etc.</p>
+    ${scaled ? `<p style="margin-top:0">Comprimento no desenho: <b>${C.fmt(L)} m</b></p>` : ''}
     <div class="acts">${isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
     bindSegs(sh);
-    setTimeout(() => { try { sh.querySelector('#iTx').focus(); } catch (e) {} }, 60);
+    const n1 = sh.querySelector('#iN1'), n2 = sh.querySelector('#iN2'), dif = sh.querySelector('[data-dif]');
+    const upd = () => {
+      const t = segVal(sh, 'lt'); sh.querySelector('[data-lev]').hidden = t !== 'desnivel'; sh.querySelector('[data-pj]').hidden = t !== 'projecao';
+      const a = C.parseNum(n1.value), b = C.parseNum(n2.value);
+      dif.textContent = a != null && b != null ? `Desnível: ${C.fmt(Math.abs(a - b) * 100, 0)} cm` : '';
+    };
+    sh.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => setTimeout(upd, 0)));
+    n1.oninput = upd; n2.oninput = upd; upd();
+    setTimeout(() => centerSeg(ln.a, ln.b, true, true), 30);
+    const x = sh.querySelector('[data-x]'); if (x) x.onclick = () => { P.lines = P.lines.filter((q) => q !== ln); undoS.pop(); sel = null; closeSheet(); changed(); };
+    const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); P.lines = P.lines.filter((q) => q !== ln); sel = null; closeSheet(); changed(); };
+    sh.querySelector('[data-ok]').onclick = () => {
+      if (!isNew) pushUndo();
+      ln.type = segVal(sh, 'lt'); lastLineType = ln.type;
+      ln.n1 = ln.type === 'desnivel' ? C.parseNum(n1.value) : null; ln.n2 = ln.type === 'desnivel' ? C.parseNum(n2.value) : null;
+      sel = null; closeSheet(); changed();
+    };
+  }, () => { sel = null; render(); });
+}
+const ROOM_NAMES = ['SALA', 'QUARTO', 'SUÍTE', 'COZINHA', 'BWC', 'ÁREA DE SERVIÇO', 'VARANDA', 'CIRCULAÇÃO', 'GARAGEM', 'DEPÓSITO', 'ESCRITÓRIO', 'RECEPÇÃO', 'SALA DE AULA', 'COPA', 'ALMOXARIFADO', 'HALL'];
+function labelSheet(lb, auto) {
+  const isNew = !lb.id;
+  const ri = lb.room ? C.roomInfo(P, lb.room) : null;
+  const scaled = P.walls.some((w) => w.len != null);
+  openSheet(`<h2>${auto ? 'Ambiente fechado: qual é?' : lb.room ? (isNew ? 'Nome do ambiente' : 'Ambiente') : (isNew ? 'Novo texto' : 'Texto')}</h2>
+    ${lb.room ? `<div class="chips">${ROOM_NAMES.map((n) => `<button type="button" data-rn="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+    <div class="f"><label for="iTx">${lb.room ? 'Nome do ambiente' : 'Texto'}</label><input id="iTx" value="${esc(lb.text)}" placeholder="ex.: SALA 01, BWC, COZINHA" autocomplete="off"></div>
+    <div class="row"><div class="f"><label for="iObs">Observação (opcional)</label><input id="iObs" value="${esc(lb.obs || '')}" placeholder="ex.: piso cerâmico, forro PVC"></div>
+    <div class="f" style="max-width:38%"><label for="iLv">Nível do piso</label><input id="iLv" inputmode="decimal" value="${esc(levStr(lb.level))}" placeholder="ex.: +0,15"></div></div>
+    ${lb.room ? `<div class="row"><div class="f"><span class="lab">Área no desenho</span>${segHTML('ar', [['1', 'Mostrar'], ['0', 'Ocultar']], lb.showArea === false ? '0' : '1')}</div>
+    <div class="f"><span class="lab">Área interna</span><p style="margin:10px 0 0;color:var(--ink)">${ri && scaled ? '<b>' + C.fmt(ri.area) + ' m²</b>' : 'aparece após a 1ª medida'}</p></div></div>` : ''}
+    <div class="f"><span class="lab">Tamanho</span>${segHTML('h', [['0.12', 'Pequeno'], ['0.2', 'Médio'], ['0.3', 'Grande']], String(lb.h || 0.2))}</div>
+    ${auto ? '<p>O texto fica no centro do ambiente e acompanha as mudanças de medida. Para não perguntar mais ao fechar ambientes, use "Não perguntar".</p>' : ''}
+    <div class="acts">${auto ? '<button class="pill" data-never>Não perguntar</button><button class="pill" data-x>Pular</button>' : isNew ? '<button class="pill" data-x>Cancelar</button>' : '<button class="pill danger" data-del>Excluir</button>'}<button class="pill pri" data-ok>Salvar</button></div>`, (sh) => {
+    bindSegs(sh);
+    const inp = sh.querySelector('#iTx');
+    setTimeout(() => { try { inp.focus(); } catch (e) {} }, 60);
+    sh.querySelectorAll('[data-rn]').forEach((b) => b.onclick = () => {
+      const base = b.dataset.rn, same = P.labels.filter((q) => q !== lb && q.text && q.text.replace(/\s+\d+$/, '') === base).length;
+      inp.value = same ? `${base} ${String(same + 1).padStart(2, '0')}` : base; inp.focus();
+    });
     const x = sh.querySelector('[data-x]'); if (x) x.onclick = closeSheet;
+    const nv = sh.querySelector('[data-never]'); if (nv) nv.onclick = () => { askRooms = false; try { localStorage.setItem('croqui_ask_rooms', '0'); } catch (e) {} closeSheet(); toast('Ok. Para nomear ambientes, use a ferramenta Texto tocando dentro deles.'); };
     const del = sh.querySelector('[data-del]'); if (del) del.onclick = () => { pushUndo(); P.labels = P.labels.filter((q) => q.id !== lb.id); sel = null; closeSheet(); changed(); };
     const ok = () => {
-      const t = sh.querySelector('#iTx').value.trim(); if (!t) { closeSheet(); return; }
-      pushUndo(); lb.text = t; lb.h = +segVal(sh, 'h');
+      const t = inp.value.trim(), lv = C.parseNum(sh.querySelector('#iLv').value);
+      if (!t && lv == null) { closeSheet(); return; }
+      pushUndo(); lb.text = t; lb.level = lv; lb.h = +segVal(sh, 'h'); lb.obs = sh.querySelector('#iObs').value.trim();
+      if (lb.room) lb.showArea = segVal(sh, 'ar') !== '0';
       if (isNew) { lb.id = C.uid('t'); P.labels.push(lb); }
       closeSheet(); changed();
     };
     sh.querySelector('[data-ok]').onclick = ok;
-    sh.querySelector('#iTx').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
   }, () => { sel = null; render(); });
 }
 function infoSheet(isNew) {
@@ -2697,15 +2949,18 @@ function helpSheet() {
     <li><b>Selecionar parede:</b> toque nela ou no número dela. Se pegar a vizinha, toque de novo no mesmo lugar para alternar. Com a folha aberta, tocar em outra parede no desenho já abre a folha dela.</li>
     <li><b>Portas e janelas:</b> dentro de cada parede: escolha o tipo, largura, altura, peitoril e a distância do canto A.</li>
     <li><b>Pilar:</b> toque para colocar; no canto ele alinha com a parede. Toque no pilar para a barra (girar 90°, 15°, medidas); tocar de novo no selecionado gira 90°.</li>
-    <li><b>Texto:</b> nome dos ambientes e observações.</li>
+    <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Arraste o texto no modo Editar para reposicionar.</li>
+    <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
+    <li><b>Linha:</b> traça linhas que não são parede. <i>Desnível</i>: informe o nível do lado A e do lado B (marcados no desenho) e o app mostra o desnível em cm; <i>Projeção</i>: linha tracejada (laje, beiral, marquise); <i>Outra linha</i>. Toque na linha para editar ou excluir.</li>
+    <li><b>Sem internet:</b> na versão instalada pelo GitHub, abra o app uma vez com internet; a faixa verde "Pronto para usar sem internet" confirma. Depois funciona no modo avião.</li>
     <li><b>Diagonal:</b> confere o esquadro do ambiente (medida entre cantos internos × desenho).</li>
     <li><b>Corte:</b> arraste atravessando a planta. O corte sai abaixo dela com pé-direito, laje, forro ou telhado, peitoris, alturas e cotas.</li>
     <li><b>3D (botão no topo):</b> mostra o levantamento em 3D com portas, janelas, pilares e cobertura. Um dedo gira; dois dedos dão zoom e movem. "Tirar cobertura" mostra o interior.</li>
     <li><b>Apagar todo o desenho (menu ⋯):</b> limpa o croqui de uma vez; Desfazer recupera.</li>
     <li><b>Conferir:</b> lista as medidas que não batem com o desenho e as diagonais.</li>
-    <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, INFO.</li></ol>
+    <li><b>Exportar (menu ⋯):</b> baixa o .dxf para a pasta Downloads (o backup .json fica em "Salvar backup"). No AutoCAD, abra o .dxf: unidades em metros, layers PAREDES, ESQUADRIAS, PILARES, COTAS, COTAS-ESTIMADAS, VERIFICACAO, TEXTOS, CORTES, CORTE-PAREDES, CORTE-LAJE, CORTE-TELHADO, NIVEIS, DESNIVEL, PROJECAO (tracejada), LINHAS, INFO.</li></ol>
     <p>Dois dedos: mover e zoom. Desfazer e refazer no topo. No modo Editar, arraste pontos, pilares e textos.</p>
-    <p>Croqui de Campo · versão 1.0</p>
+    <p>Croqui de Campo · versão 1.1</p>
     <div class="acts"><button class="pill pri" data-ok>Entendi</button></div>`, (sh) => { sh.querySelector('[data-ok]').onclick = closeSheet; });
 }
 
@@ -2824,6 +3079,14 @@ window.addEventListener('pagehide', () => { if (P) { P.updatedAt = Date.now(); m
 }
 
 </script>
-<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
+<script>{
+  const st = (t, ok) => { const el = document.getElementById('offStat'); if (el) { el.textContent = t; el.style.color = ok ? 'var(--ok)' : 'var(--muted)'; } };
+  if (!('serviceWorker' in navigator)) st('Este navegador não permite o uso sem internet.', false);
+  else {
+    addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => st('Não foi possível ativar o uso sem internet.', false)));
+    const upd = () => st(navigator.serviceWorker.controller ? '✓ Pronto para usar sem internet neste celular.' : 'Para ativar o uso sem internet: feche e abra o app uma vez com internet.', !!navigator.serviceWorker.controller);
+    navigator.serviceWorker.ready.then(upd); navigator.serviceWorker.addEventListener('controllerchange', upd); upd();
+  }
+}</script>
 </body>
 </html>

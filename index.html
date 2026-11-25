@@ -1571,6 +1571,11 @@ const Core = (() => {
       if (w.kind === 'verif' || w.a === w.b || !nm.get(w.a) || !nm.get(w.b)) continue;
       for (const [u, v] of [[w.a, w.b], [w.b, w.a]]) { if (!adj.has(u)) adj.set(u, []); if (!adj.get(u).includes(v)) adj.get(u).push(v); }
     }
+    // paredes com ponta solta (não fecham nada) saem da busca de ambientes, senão o cômodo onde estão some
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const [u, list] of adj) if (list.length <= 1) { for (const v of list) { const L = adj.get(v); if (L) L.splice(L.indexOf(u), 1); } adj.delete(u); changed = true; }
+    }
     const ang = (u, v) => { const U = nm.get(u), V = nm.get(v); return Math.atan2(V.y - U.y, V.x - U.x); };
     for (const [u, list] of adj) list.sort((a, b) => ang(u, a) - ang(u, b));
     const seen = new Set(), out = [];
@@ -2380,6 +2385,18 @@ function snap(sx, sy, from, lock = true) {
   const n = nearestNode(w, tolN, from && from.nodeId);
   if (n) return { pt: { x: n.x, y: n.y }, nodeId: n.id };
   if (ima) { // ímã ligado: crava na quadrícula (mantém reto em relação ao ponto de partida)
+    // perto de uma parede, a parede vale mais que a quadrícula: o traço encosta nela (e fecha o ambiente)
+    const nwr = nearestWall(w, 16 / view.s);
+    if (nwr && !nwr.arc && nwr.t > 0.02 && nwr.t < 0.98) {
+      const nm0 = C.nodeMap(P), WA = nm0.get(nwr.wall.a), WB = nm0.get(nwr.wall.b);
+      let Q = nwr.Q;
+      if (from && lock) { // mantém o traço reto (horizontal/vertical) até encostar na parede
+        const dx = w.x - from.pt.x, dy = w.y - from.pt.y, tan = Math.tan(10 * Math.PI / 180);
+        const dir = Math.abs(dy) <= tan * Math.abs(dx) ? { x: 1, y: 0 } : Math.abs(dx) <= tan * Math.abs(dy) ? { x: 0, y: 1 } : null;
+        if (dir) { const X = lineHit(from.pt, dir, WA, WB); if (X && Math.hypot(X.x - w.x, X.y - w.y) < 40 / view.s) Q = X; }
+      }
+      return { pt: Q, wallId: nwr.wall.id, guides: [] };
+    }
     let g = gridSnap(w);
     // alinhamento com cantos já desenhados tem prioridade sobre a quadrícula
     const tolA2 = 12 / view.s;
@@ -2421,6 +2438,77 @@ function snap(sx, sy, from, lock = true) {
     return { pt: Q, wallId: nw.wall.id, guides: alignGuides(Q, from && from.nodeId) };
   }
   return { pt: w, guides: alignGuides(w, from && from.nodeId).filter((m) => !(from && from.pt && Math.hypot(m.x - from.pt.x, m.y - from.pt.y) < 1e-6)) };
+}
+/* interseção da reta (P0, dir) com o segmento A-B (dentro dele) */
+function lineHit(P0, dir, A, B) {
+  const e = C.sub(B, A), den = C.cross(dir, e); if (Math.abs(den) < 1e-9) return null;
+  const t = C.cross(C.sub(A, P0), e) / den, s = C.cross(C.sub(A, P0), dir) / den;
+  if (s < 0.01 || s > 0.99) return null;
+  return { x: P0.x + dir.x * t, y: P0.y + dir.y * t };
+}
+/* junta o nó "de" no nó "para" (as paredes passam a usar o "para") */
+function joinNodes(from, to) {
+  if (!from || !to || from === to) return;
+  for (const w of P.walls) { if (w.a === from.id) w.a = to.id; if (w.b === from.id) w.b = to.id; }
+  P.walls = P.walls.filter((w) => w.a !== w.b);
+  const seen = new Set(); P.walls = P.walls.filter((w) => { const k = [w.a, w.b].sort().join('|') + w.kind; if (seen.has(k)) return false; seen.add(k); return true; });
+  P.nodes = P.nodes.filter((n) => n !== from);
+}
+const nodeDeg = (id) => P.walls.reduce((k, w) => k + (w.kind !== 'verif' && (w.a === id || w.b === id) ? 1 : 0), 0);
+/* depois de um traço: divide onde ele cruza paredes, tira as sobras curtas e encosta pontas que pararam perto de uma parede,
+   para o ambiente fechar e a área do texto ser a do cômodo certo */
+function healStroke(newIds) {
+  const isNew = (w) => newIds.has(w.id);
+  const nmF = () => C.nodeMap(P);
+  for (let guard = 0; guard < 40; guard++) { // 1) cruzamentos
+    const nm = nmF(); let hit = null;
+    for (const a of P.walls) {
+      if (!isNew(a) || a.kind === 'verif' || C.arcInfo(P, a, nm)) continue;
+      const A1 = nm.get(a.a), A2 = nm.get(a.b);
+      for (const b of P.walls) {
+        if (b === a || b.kind === 'verif' || C.arcInfo(P, b, nm) || b.a === a.a || b.a === a.b || b.b === a.a || b.b === a.b) continue;
+        const B1 = nm.get(b.a), B2 = nm.get(b.b), d1 = C.sub(A2, A1), d2 = C.sub(B2, B1), den = C.cross(d1, d2);
+        if (Math.abs(den) < 1e-9) continue;
+        const t = C.cross(C.sub(B1, A1), d2) / den, s = C.cross(C.sub(B1, A1), d1) / den;
+        const La = C.len(d1), Lb = C.len(d2);
+        if (t * La > 0.03 && (1 - t) * La > 0.03 && s * Lb > 0.03 && (1 - s) * Lb > 0.03 && t > 0 && t < 1 && s > 0 && s < 1) { hit = { a, b, X: { x: A1.x + d1.x * t, y: A1.y + d1.y * t } }; break; }
+      }
+      if (hit) break;
+    }
+    if (!hit) break;
+    const nb = C.splitWall(P, hit.b, hit.X);
+    const before = new Set(P.walls.map((w) => w.id)), na = C.splitWall(P, hit.a, hit.X);
+    for (const w of P.walls) if (!before.has(w.id)) newIds.add(w.id); // a outra metade do traço também é nova
+    joinNodes(na, nb);
+  }
+  const nm = nmF();
+  // 2) sobra curta depois de um cruzamento (o dedo passou da parede): apaga
+  for (const w of P.walls.slice()) {
+    if (!isNew(w) || w.kind === 'verif') continue;
+    for (const [end, other] of [[w.a, w.b], [w.b, w.a]]) {
+      const E = nm.get(end), O = nm.get(other); if (!E || !O) continue;
+      if (nodeDeg(end) === 1 && nodeDeg(other) >= 3 && Math.hypot(E.x - O.x, E.y - O.y) < Math.max(0.6, 30 / view.s)) { P.walls = P.walls.filter((x) => x !== w); break; }
+    }
+  }
+  // 3) ponta solta que parou perto de outra parede: prolonga até encostar
+  const nm3 = nmF();
+  for (const w of P.walls.slice()) {
+    if (!isNew(w) || w.kind === 'verif' || !P.walls.includes(w)) continue;
+    for (const [end, other] of [[w.a, w.b], [w.b, w.a]]) {
+      if (nodeDeg(end) !== 1) continue;
+      const E = nm3.get(end), O = nm3.get(other); if (!E || !O) continue;
+      const dir = C.unit(C.sub(E, O)), gap = Math.max(0.45, 30 / view.s);
+      let best = null, bd = Infinity;
+      for (const x of P.walls) {
+        if (x === w || x.kind === 'verif' || x.a === end || x.b === end || C.arcInfo(P, x, nm3)) continue;
+        const X = lineHit(E, dir, nm3.get(x.a), nm3.get(x.b)); if (!X) continue;
+        const d = C.dot(C.sub(X, E), dir); // só para a frente (ponta curta)
+        if (d > -0.05 && d < gap && d < bd) { bd = d; best = { x, X }; }
+      }
+      if (best) { const n = C.splitWall(P, best.x, best.X); joinNodes(E, n); }
+    }
+  }
+  C.removeOrphans(P);
 }
 function resolveNode(sn) {
   if (sn.nodeId) return P.nodes.find((n) => n.id === sn.nodeId);
@@ -2619,7 +2707,9 @@ function commitStroke(d) {
   pushUndo();
   if (poly.length <= 2) {
     const na = resolveNode(d.start), nb = resolveNode(d.end);
+    const ids0 = new Set(P.walls.map((w) => w.id));
     if (!addWall(na, nb)) { C.removeOrphans(P); undoS.pop(); }
+    else healStroke(new Set(P.walls.filter((w) => !ids0.has(w.id)).map((w) => w.id)));
     changed(); promptNewRoom(before); return;
   }
   // traço à mão livre com várias quinas: cada trecho vira uma parede
@@ -2638,7 +2728,7 @@ function commitStroke(d) {
       else if (Math.abs(dy) <= tan * Math.abs(dx)) lastS.pt = { x: lastS.pt.x, y: f0.y };
     }
   }
-  const nodes = [];
+  const nodes = [], ids0 = new Set(P.walls.map((w) => w.id));
   let made = 0;
   for (let i = 0; i < snaps.length; i++) {
     const n = snaps[i] === 'close' ? nodes[0] : resolveNode(snaps[i]);
@@ -2646,7 +2736,8 @@ function commitStroke(d) {
     if (i > 0 && addWall(nodes[i - 1], n)) made++;
   }
   if (!made) { C.removeOrphans(P); undoS.pop(); }
-  else toast(`${made} parede${made > 1 ? 's' : ''} criada${made > 1 ? 's' : ''}${closed ? ' (ambiente fechado)' : ''}.`);
+  else healStroke(new Set(P.walls.filter((w) => !ids0.has(w.id)).map((w) => w.id)));
+  if (made) toast(`${made} parede${made > 1 ? 's' : ''} criada${made > 1 ? 's' : ''}${closed ? ' (ambiente fechado)' : ''}.`);
   changed(); if (made) promptNewRoom(before);
 }
 function endPtr(e) {
@@ -2746,7 +2837,17 @@ cv.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 function mergeNode(n) {
-  const o = nearestNode(n, 10 / view.s, n.id); if (!o) return;
+  const o = nearestNode(n, 10 / view.s, n.id);
+  if (!o) { // canto solto solto em cima de uma parede: liga nela
+    if (nodeDeg(n.id) !== 1) return;
+    const nm = C.nodeMap(P); let best = null, bd = 14 / view.s;
+    for (const x of P.walls) {
+      if (x.kind === 'verif' || x.a === n.id || x.b === n.id || C.arcInfo(P, x, nm)) continue;
+      const r = C.wallDist(P, x, n, nm); if (r.d < Math.max(bd, x.t / 2 + 4 / view.s) && r.t > 0.02 && r.t < 0.98 && r.d < (best ? best.d : Infinity)) best = { x, ...r };
+    }
+    if (best) { const m = C.splitWall(P, best.x, best.Q); joinNodes(n, m); toast('Canto ligado à parede.'); }
+    return;
+  }
   for (const w of P.walls) { if (w.a === n.id) w.a = o.id; if (w.b === n.id) w.b = o.id; }
   P.walls = P.walls.filter((w) => w.a !== w.b);
   const seen = new Set(); P.walls = P.walls.filter((w) => { const k = [w.a, w.b].sort().join('|') + w.kind; if (seen.has(k)) return false; seen.add(k); return true; });
@@ -3434,6 +3535,7 @@ function helpSheet() {
     <li><b>Ambientes e textos:</b> ao fechar um ambiente, o app pergunta o nome (botões rápidos: SALA, QUARTO, BWC…) e coloca o texto no centro com a área interna e uma observação opcional; o texto acompanha as medidas. Com a ferramenta Texto, toque dentro de um ambiente para nomeá-lo ou em qualquer lugar para uma observação. Para mudar o lugar do texto, arraste-o com a ferramenta Texto ou Editar, ou toque nele e use "Mover texto".</li>
     <li><b>Anotações (botão do bloco de notas no topo):</b> escreva ou dite (microfone do teclado) observações do levantamento. Os botões rápidos (Fissura, Infiltração, Foto nº…) adiantam o texto. "Salvar e marcar no desenho" pede um toque no lugar: aparece um balão vermelho numerado. Toque no balão para ver ou editar; no modo Editar, arraste-o. No DXF, os balões e a lista numerada saem no layer ANOTACOES. "Compartilhar" manda o texto para WhatsApp, e-mail etc.</li>
     <li><b>Nível do piso:</b> na folha do ambiente (ferramenta Texto) preencha "Nível do piso" (ex.: ±0,00, +0,15, -0,05); sai o símbolo de nível com a cota. Também dá para pôr só o nível, sem nome, em qualquer ponto.</li>
+    <li><b>Paredes internas e ambientes:</b> a ponta de um traço que para perto de uma parede (ou passa um pouco dela) é ligada automaticamente, inclusive com o ímã ligado, para o ambiente fechar e a área do texto ser a do cômodo certo. Se uma parede ficou solta, no modo Editar arraste o canto dela até encostar na outra parede.</li>
     <li><b>Sair da edição:</b> toque fora da folha, no ✕ do canto dela ou no botão voltar do celular. Isso só fecha e tira a seleção, sem selecionar outra coisa. O voltar do celular fecha folha, 3D e seleção; no desenho, volta para a lista.</li>
     <li><b>Selecionar:</b> toque em qualquer objeto (parede, texto, nível, linha, corte, pilar, anotação) em qualquer ferramenta. Se vier o objeto errado, toque de novo no mesmo lugar: o app passa para o próximo que está ali. O selecionado fica com contorno azul tracejado.</li>
     <li><b>Mover textos e níveis:</b> arraste com as ferramentas Texto ou Editar (os níveis do desnível também com a ferramenta Linha), ou toque no objeto e use "Mover texto" / "Mover nível". Nível afastado da linha ganha uma linha de chamada.</li>
